@@ -1,0 +1,8 @@
+BasedOnStyle: Microsoft  
+UseTab: Always
+IndentExternBlock: NoIndent
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 288
+DerivePointerAlignment: false
+PointerAlignment: Left
