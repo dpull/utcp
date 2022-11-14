@@ -22,15 +22,6 @@ THE SOFTWARE.
 #include <assert.h>
 #include <stdbool.h>
 
-#ifndef FIELD_OFFSET
-// long
-// FIELD_OFFSET(
-//     IN <typename>   type,
-//     IN <fieldname>  field
-//     );
-#define FIELD_OFFSET(type, field) ((long)&(((type*)0)->field))
-#endif
-
 #ifndef CONTAINING_RECORD
 // <typename> FAR *
 // CONTAINING_RECORD(

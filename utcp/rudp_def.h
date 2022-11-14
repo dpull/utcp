@@ -3,6 +3,7 @@
 #pragma once
 
 #include "rudp_packet_notify_def.h"
+#include "rudp_bunch_data.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -31,29 +32,6 @@ extern "C" {
 #pragma once
 
 #define MAX_PACKETID (1 << 14)
-
-struct rudp_bunch
-{
-	uint32_t NameIndex;
-	int32_t ChSequence;
-	uint16_t ChIndex;
-	uint16_t DataBitsLen;
-
-	uint8_t bOpen : 1;
-	uint8_t bClose : 1;
-	uint8_t CloseReason : 4;
-	uint8_t bIsReplicationPaused : 1;
-	uint8_t bReliable : 1;
-
-	uint8_t bHasPackageMapExports : 1;
-	uint8_t bHasMustBeMappedGUIDs : 1;
-	uint8_t bPartial : 1;
-	uint8_t bPartialInitial : 1;
-	uint8_t bPartialFinal : 1;
-	uint8_t bHardcoded : 1;
-
-	uint8_t Data[MaxPacket];
-};
 
 enum rudp_state
 {
@@ -137,6 +115,9 @@ struct rudp_fd
 	int32_t OutReliable[DEFAULT_MAX_CHANNEL_SIZE];
 	int32_t InReliable[DEFAULT_MAX_CHANNEL_SIZE];
 
+	int32_t NumInRec; // Number of packets in InRec.
+	int32_t NumOutRec; // Number of packets in OutRec.
+
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
 	uint32_t HasDirtyAcks;
 
@@ -149,6 +130,8 @@ struct rudp_fd
 	size_t HeaderMarkForPacketInfo;
 
 	uint8_t AllowMerge; // Whether to allow merging.
+
+	struct rudp_bunch_data rudp_bunch_data;
 };
 
 #ifdef __cplusplus

@@ -1,5 +1,6 @@
 ﻿#include "rudp.h"
 #include "bit_buffer.h"
+#include "rudp_def.h"
 #include "rudp_handshake.h"
 #include "rudp_packet.h"
 #include <assert.h>
@@ -90,6 +91,11 @@ void rudp_raw_accept(struct rudp_fd* fd, bool new_conn, char* buffer, size_t len
 	{
 		rudp_env.callback(fd, fd->userdata, callback_reconn, buffer, (int)len);
 	}
+}
+
+void rudp_on_recv(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
+{
+	rudp_env.callback(fd, fd->userdata, callback_recv_bunches, bunches, bunches_count);
 }
 
 void rudp_init(struct rudp_fd* fd, void* userdata, int is_client)
@@ -228,6 +234,15 @@ int rudp_update(struct rudp_fd* fd)
 		}
 	}
 	return 0;
+}
+
+struct packet_id_range rudp_send(struct rudp_fd* fd, const struct rudp_bunch* bunches[], int bunches_count)
+{
+	struct packet_id_range PacketIdRange = {PACKET_ID_INDEX_NONE, PACKET_ID_INDEX_NONE};
+	if (!check_can_send(fd, bunches, bunches_count))
+		return PacketIdRange;
+
+	return PacketIdRange;
 }
 
 void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence)

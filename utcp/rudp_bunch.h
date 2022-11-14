@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "rudp_def.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

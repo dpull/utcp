@@ -17,9 +17,8 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf);
 void rudp_raw_send(struct rudp_fd* fd, char* buffer, size_t len);
 void rudp_raw_accept(struct rudp_fd* fd, bool new_conn, char* buffer, size_t len);
 
-// GetElapsedTime
 int64_t rudp_gettime_ms(void);
-double rudp_gettime(void);
+double rudp_gettime(void); // GetElapsedTime
 
 inline void rudp_set_state(struct rudp_fd* fd, enum rudp_state state)
 {
