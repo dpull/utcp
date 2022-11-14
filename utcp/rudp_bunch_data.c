@@ -247,3 +247,12 @@ int get_partial_bunch(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch
 	assert(bunches[count - 1]->bPartialFinal);
 	return true;
 }
+
+void add_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch_node* rudp_bunch_node)
+{
+}
+
+struct rudp_bunch_node* remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id)
+{
+	return NULL;
+}

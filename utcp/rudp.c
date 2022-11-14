@@ -1,6 +1,5 @@
 ﻿#include "rudp.h"
 #include "bit_buffer.h"
-#include "rudp_def.h"
 #include "rudp_handshake.h"
 #include "rudp_packet.h"
 #include <assert.h>

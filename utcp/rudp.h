@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "rudp_def.h"
 #include <stdint.h>
 
 #ifdef __cplusplus

@@ -83,4 +83,4 @@ void clear_partial_data(struct rudp_bunch_data* rudp_bunch_data);
 int get_partial_bunch(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch* bunches[], int bunches_size);
 
 void add_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch_node* rudp_bunch_node);
-struct rudp_bunch_node* remove_outcoming_data(struct rudp_fd* fd, int32_t packet_id);
+struct rudp_bunch_node* remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id);

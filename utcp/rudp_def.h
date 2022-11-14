@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "rudp_packet_notify_def.h"
 #include "rudp_bunch_data.h"
+#include "rudp_packet_notify_def.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -105,7 +105,8 @@ struct rudp_fd
 	int32_t InPacketId;		// Full incoming packet index.
 	int32_t OutPacketId;	// Most recently sent packet.
 	int32_t OutAckPacketId; // Most recently acked outgoing packet.
-	/** Full PacketId  of last sent packet that we have received notification for (i.e. we know if it was delivered or not). Related to OutAckPacketId which is tha last successfully delivered PacketId */
+	/** Full PacketId  of last sent packet that we have received notification for (i.e. we know if it was delivered or not). Related to OutAckPacketId which is
+	 * tha last successfully delivered PacketId */
 	int32_t LastNotifiedPacketId;
 
 	struct packet_notify packet_notify;
@@ -115,7 +116,7 @@ struct rudp_fd
 	int32_t OutReliable[DEFAULT_MAX_CHANNEL_SIZE];
 	int32_t InReliable[DEFAULT_MAX_CHANNEL_SIZE];
 
-	int32_t NumInRec; // Number of packets in InRec.
+	int32_t NumInRec;  // Number of packets in InRec.
 	int32_t NumOutRec; // Number of packets in OutRec.
 
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */

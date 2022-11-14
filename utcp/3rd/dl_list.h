@@ -21,6 +21,7 @@ THE SOFTWARE.
 #pragma once
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifndef CONTAINING_RECORD
 // <typename> FAR *
