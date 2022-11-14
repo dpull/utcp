@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright DPULL, Inc. All Rights Reserved.
+
+#pragma once
 
 #include <stdint.h>
 

@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright DPULL, Inc. All Rights Reserved.
+
+#pragma once
 
 #include "rudp_packet_notify_def.h"
 #include <stdbool.h>

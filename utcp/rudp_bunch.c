@@ -1,16 +1,17 @@
 ﻿#include "rudp_bunch.h"
+#include "bit_buffer.h"
 #include "rudp_def.h"
-#include <string.h>
 #include <assert.h>
+#include <string.h>
 
-#define BITBUF_READ_BIT(VAR) \
-	do 	{ \
-		uint8_t __VALUE; \
-		if (!bitbuf_read_bit(bitbuf, &__VALUE)) \
-			return false; \
-		VAR = __VALUE; \
+#define BITBUF_READ_BIT(VAR)                                                                                                                                   \
+	do                                                                                                                                                         \
+	{                                                                                                                                                          \
+		uint8_t __VALUE;                                                                                                                                       \
+		if (!bitbuf_read_bit(bitbuf, &__VALUE))                                                                                                                \
+			return false;                                                                                                                                      \
+		VAR = __VALUE;                                                                                                                                         \
 	} while (0);
-
 
 static inline int32_t BestSignedDifference(int32_t Value, int32_t Reference, int32_t Max)
 {
@@ -77,13 +78,13 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 		rudp_bunch->ChSequence = 0;
 	}
 
-
 	if (rudp_bunch->bReliable || rudp_bunch->bOpen)
 	{
 		BITBUF_READ_BIT(rudp_bunch->bHardcoded);
 		if (!rudp_bunch->bHardcoded)
 		{
 			// TODO 暂时不支持
+			assert(false);
 			return false;
 		}
 
@@ -93,11 +94,16 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 		rudp_bunch->NameIndex = NameIndex;
 	}
 
-		uint32_t BunchDataBits; // 80
+	uint32_t BunchDataBits; // 80
 	if (!bitbuf_read_int(bitbuf, &BunchDataBits, MaxPacket * 8))
-			return false;
+		return false;
 	rudp_bunch->DataBitsLen = BunchDataBits;
 	if (!bitbuf_read_bits(bitbuf, rudp_bunch->Data, rudp_bunch->DataBitsLen))
 		return false;
 	return true;
+}
+
+bool rudp_bunch_write(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struct rudp_fd* fd)
+{
+	return false;
 }

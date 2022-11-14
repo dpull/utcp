@@ -1,4 +1,8 @@
-﻿#include "rudp_packet_notify_def.h"
+﻿// Copyright DPULL, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "rudp_packet_notify_def.h"
 #include <stdbool.h>
 #include <stdint.h>
 

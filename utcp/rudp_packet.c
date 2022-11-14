@@ -1,11 +1,22 @@
 ﻿#include "rudp_packet.h"
 #include "bit_buffer.h"
+#include "rudp.h"
+#include "rudp_bunch.h"
 #include "rudp_handshake.h"
+#include "rudp_packet_notify.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define NumBitsForJitterClockTimeInHeader 10
+enum
+{
+	NumBitsForJitterClockTimeInHeader = 10,
+
+	MAX_PACKET_TRAILER_BITS = 1,
+	MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS = 32 /*PackedHeader*/ + MaxSequenceHistoryLength,
+	MAX_PACKET_INFO_HEADER_BITS = 1 /*bHasPacketInfo*/ + NumBitsForJitterClockTimeInHeader + 1 /*bHasServerFrameTime*/ + 8 /*ServerFrameTime*/,
+	MAX_PACKET_HEADER_BITS = MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS + MAX_PACKET_INFO_HEADER_BITS,
+};
 
 static void check_bit(struct bitbuf* bitbuf, uint8_t exp)
 {
@@ -62,19 +73,23 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 		return -8;
 	}
 
-	const int32_t MissingPacketCount = PacketSequenceDelta - 1;
-	if (MissingPacketCount > 0)
+	const bool bFlushingPacketOrderCache = false;
+	if (bFlushingPacketOrderCache)
 	{
-		// TODO PacketOrderCache 相关
-		return 0;
+		// 按照我们的设计, PacketOrderCache 以及 FlushPacketOrderCache 功能由外部实现
+		const int32_t MissingPacketCount = PacketSequenceDelta - 1;
+		if (MissingPacketCount > 0)
+		{
+			return 0;
+		}
 	}
 
 	fd->InPacketId += PacketSequenceDelta;
 	// Update incoming sequence data and deliver packet notifications
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
-	packet_notify_Update(fd, & fd->packet_notify, &notification_header);
+	packet_notify_Update(fd, &fd->packet_notify, &notification_header);
 
-	uint8_t bHasServerFrameTime;
+	// uint8_t bHasServerFrameTime;
 	check_bit(bitbuf, 0);
 
 	bool bSkipAck = false;
@@ -102,22 +117,6 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 // UNetConnection::GetFreeSendBufferBits
 int64_t GetFreeSendBufferBits(struct rudp_fd* fd)
 {
-	enum
-	{
-		MAX_PACKET_TRAILER_BITS = 1
-	};
-	enum
-	{
-		MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS = 32 /*PackedHeader*/ + MaxSequenceHistoryLength
-	};
-	enum
-	{
-		MAX_PACKET_INFO_HEADER_BITS = 1 /*bHasPacketInfo*/ + NumBitsForJitterClockTimeInHeader + 1 /*bHasServerFrameTime*/ + 8 /*ServerFrameTime*/
-	};
-	enum
-	{
-		MAX_PACKET_HEADER_BITS = MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS + MAX_PACKET_INFO_HEADER_BITS
-	};
 	// If we haven't sent anything yet, make sure to account for the packet header + trailer size
 	// Otherwise, we only need to account for trailer size
 	const int32_t ExtraBits = (fd->SendBufferBitsNum > 0) ? MAX_PACKET_TRAILER_BITS : MAX_PACKET_HEADER_BITS + MAX_PACKET_TRAILER_BITS;
@@ -201,7 +200,8 @@ void PrepareWriteBitsToSendBuffer(struct rudp_fd* fd, const int32_t SizeInBits, 
 }
 
 // UNetConnection::WriteBitsToSendBufferInternal
-int32_t WriteBitsToSendBufferInternal(struct rudp_fd* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
+int32_t WriteBitsToSendBufferInternal(struct rudp_fd* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits,
+									  const int32_t ExtraSizeInBits)
 {
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));

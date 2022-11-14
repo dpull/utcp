@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define KeepAliveTime (0.2 * 1000)
+#define KeepAliveTime (int)(0.2 * 1000)
 
 struct rudp_env
 {
@@ -42,7 +42,7 @@ void rudp_env_setcallback(callback_fn callback)
 	rudp_env.callback = callback;
 }
 
-void rudp_env_set_debug_cookie(const char debug_cookie[20])
+void rudp_env_set_debug_cookie(const uint8_t debug_cookie[20])
 {
 	rudp_env.enable_debug_cookie = true;
 	memcpy(rudp_env.debug_cookie, debug_cookie, sizeof(rudp_env.debug_cookie));

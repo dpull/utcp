@@ -19,7 +19,7 @@ static bool allow_opt(struct bitbuf* buff, size_t bits_length)
 	return buff->num + bits_length <= buff->size;
 }
 
-static void appBitsCpy(uint8_t* Dest, int32_t DestBit, uint8_t* Src, int32_t SrcBit, int32_t BitCount)
+static void appBitsCpy(uint8_t* Dest, int32_t DestBit, const uint8_t* Src, int32_t SrcBit, int32_t BitCount)
 {
 	if (BitCount == 0)
 		return;
@@ -158,7 +158,7 @@ bool bitbuf_write_bit(struct bitbuf* buff, uint8_t value)
 	return true;
 }
 
-bool bitbuf_write_bits(struct bitbuf* buff, void* data, size_t bits_size)
+bool bitbuf_write_bits(struct bitbuf* buff, const void* data, size_t bits_size)
 {
 	if (!allow_opt(buff, bits_size))
 		return false;
@@ -177,7 +177,7 @@ bool bitbuf_write_bits(struct bitbuf* buff, void* data, size_t bits_size)
 	return true;
 }
 
-bool bitbuf_write_bytes(struct bitbuf* buff, void* data, size_t size)
+bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size)
 {
 	size_t bits_size = size * 8;
 	if (!allow_opt(buff, bits_size))
@@ -307,4 +307,5 @@ bool bitbuf_read_int_packed(struct bitbuf* buff, uint32_t* value)
 	}
 
 	*value = Value;
+	return true;
 }
