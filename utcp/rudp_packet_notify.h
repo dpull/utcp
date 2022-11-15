@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "bit_buffer.h"
+#include "rudp_def.h"
 #include "rudp_packet_notify_def.h"
 #include <stdbool.h>
 #include <stdint.h>

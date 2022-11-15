@@ -1,6 +1,7 @@
 ﻿#include "utcp/rudp.h"
 #include "utcp/rudp_def.h"
 #include "gtest/gtest.h"
+#include <memory>
 
 static int8_t handshake_step1[] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8};
 static std::vector<char> last_send;

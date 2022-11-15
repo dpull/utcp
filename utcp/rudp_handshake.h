@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "bit_buffer.h"
 #include "rudp_def.h"
 
 void UpdateSecret(struct rudp_fd* fd);
@@ -20,7 +21,7 @@ void rudp_raw_accept(struct rudp_fd* fd, bool new_conn, char* buffer, size_t len
 int64_t rudp_gettime_ms(void);
 double rudp_gettime(void); // GetElapsedTime
 
-inline void rudp_set_state(struct rudp_fd* fd, enum rudp_state state)
+inline static void rudp_set_state(struct rudp_fd* fd, enum rudp_state state)
 {
 	fd->state = state;
 }

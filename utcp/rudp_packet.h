@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "bit_buffer.h"
 #include "rudp_def.h"
 
 void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq);

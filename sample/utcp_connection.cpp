@@ -1,5 +1,6 @@
 #include "utcp_connection.h"
 #include <cassert>
+#include <cstring>
 
 #ifdef _MSC_VER
 struct WSAGuard

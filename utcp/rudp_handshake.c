@@ -90,7 +90,8 @@ void NotifyHandshakeBegin(struct rudp_fd* fd)
 	fd->LastClientSendTimestamp = rudp_gettime_ms();
 }
 
-static bool ParseHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie)
+static bool ParseHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp,
+								 uint8_t* OutCookie, uint8_t* OutOrigCookie)
 {
 	bool bValidPacket = false;
 	size_t BitsLeft = bitbuf->size - bitbuf->num;
@@ -407,8 +408,8 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
 					// Now finish initializing the handler - flushing the queued packet buffer in the process.
 					rudp_set_state(fd, Initialized);
 
-					// TODO 连接成功发包 PacketHandler::HandlerComponentInitialized  -->PacketHandler::HandlerInitialized(通知业务层发送 UPendingNetGame::SendInitialJoin)
-					// Initialized();
+					// TODO 连接成功发包 PacketHandler::HandlerComponentInitialized  -->PacketHandler::HandlerInitialized(通知业务层发送
+					// UPendingNetGame::SendInitialJoin) Initialized();
 					fd->bRestartedHandshake = false;
 				}
 			}

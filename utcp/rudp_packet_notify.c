@@ -71,7 +71,8 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
-	if (notification_header->Seq > packet_notify->InSeq && notification_header->AckedSeq >= packet_notify->OutAckSeq && packet_notify->OutSeq > notification_header->AckedSeq)
+	if (notification_header->Seq > packet_notify->InSeq && notification_header->AckedSeq >= packet_notify->OutAckSeq &&
+		packet_notify->OutSeq > notification_header->AckedSeq)
 	{
 		return notification_header->Seq - packet_notify->InSeq;
 	}
@@ -122,8 +123,7 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 	}
 }
 
-
-static void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool bDelivered)
+void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool bDelivered)
 {
 	// Increase LastNotifiedPacketId, this is a full packet Id
 	++fd->LastNotifiedPacketId;
@@ -171,8 +171,8 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 			if (AckCount > MaxSequenceHistoryLength)
 			{
 				/*
-				UE_LOG_PACKET_NOTIFY_WARNING(TEXT("Notification::ProcessReceivedAcks - Missed Acks: AckedSeq: %u, OutAckSeq: %u, FirstMissingSeq: %u Count: %u"), NotificationData.AckedSeq.Get(), OutAckSeq.Get(), CurrentAck.Get(),
-											 AckCount - (SequenceNumberT::DifferenceT)(SequenceHistoryT::Size));
+				UE_LOG_PACKET_NOTIFY_WARNING(TEXT("Notification::ProcessReceivedAcks - Missed Acks: AckedSeq: %u, OutAckSeq: %u, FirstMissingSeq: %u Count:
+				%u"), NotificationData.AckedSeq.Get(), OutAckSeq.Get(), CurrentAck.Get(), AckCount - (SequenceNumberT::DifferenceT)(SequenceHistoryT::Size));
 											 */
 				while (AckCount > MaxSequenceHistoryLength)
 				{
@@ -185,7 +185,7 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 				while (AckCount > 0)
 				{
 					--AckCount;
-				
+
 					// TSequenceHistory<HistorySize>::IsDelivered
 					bool IsDelivered;
 					{
@@ -196,8 +196,9 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 
 						IsDelivered = (packet_notify->InSeqHistory[WordIndex] & WordMask) != 0u;
 					}
-					
-					// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(), NotificationData.History.IsDelivered(AckCount) ? 1u : 0u, AckCount);
+
+					// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(),
+					// NotificationData.History.IsDelivered(AckCount) ? 1u : 0u, AckCount);
 					HandlePacketNotification(fd, CurrentAck, IsDelivered);
 					++CurrentAck;
 				}
@@ -248,7 +249,9 @@ size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify* packe
 bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbuf* bitbuf, bool bRefresh)
 {
 	// we always write at least 1 word
-	size_t CurrentHistoryWordCount = ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u, SequenceHistoryWordCount);
+	size_t CurrentHistoryWordCount =
+		ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u,
+			  SequenceHistoryWordCount);
 
 	// We can only do a refresh if we do not need more space for the history
 	if (bRefresh && (CurrentHistoryWordCount > packet_notify->WrittenHistoryWordCount))
@@ -274,7 +277,8 @@ bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbu
 		bitbuf_write_bytes(bitbuf, &packet_notify->InSeqHistory, NumWords * sizeof(packet_notify->InSeqHistory[0]));
 	}
 
-	// TODO log UE_LOG_PACKET_NOTIFY(TEXT("FNetPacketNotify::WriteHeader - Seq %u, AckedSeq %u bReFresh %u HistorySizeInWords %u"), Seq, AckedSeq, bRefresh ? 1u : 0u, WrittenHistoryWordCount);
+	// TODO log UE_LOG_PACKET_NOTIFY(TEXT("FNetPacketNotify::WriteHeader - Seq %u, AckedSeq %u bReFresh %u HistorySizeInWords %u"), Seq, AckedSeq, bRefresh ? 1u
+	// : 0u, WrittenHistoryWordCount);
 
 	return true;
 }
