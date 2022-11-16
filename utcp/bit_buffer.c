@@ -169,6 +169,11 @@ void bitbuf_write_reuse(struct bitbuf* buff, uint8_t* buffer, size_t num_bits, s
 	buff->num = num_bits;
 }
 
+bool bitbuf_write_end(struct bitbuf* buff)
+{
+	return bitbuf_write_bit(buff, 1);
+}
+
 bool bitbuf_write_bit(struct bitbuf* buff, uint8_t value)
 {
 	if (!allow_opt(buff, 1))

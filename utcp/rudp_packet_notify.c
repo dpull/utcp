@@ -1,6 +1,8 @@
 ﻿#include "rudp_packet_notify.h"
 #include "bit_buffer.h"
+#include "rudp_config.h"
 #include "rudp_def.h"
+#include "rudp_packet.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,6 +69,30 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	// Pessimistic view, should never occur but we do want to know about it if it would
 	// ensureMsgf(false, TEXT("FNetPacketNotify::UpdateInAckSeqAck - Failed to find matching AckRecord for %u"), AckedSeq.Get());
 	return AckedSeq - MaxSequenceHistoryLength;
+}
+
+static void ReceivedAck(struct rudp_fd* fd, int32_t AckPacketId)
+{
+	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->rudp_bunch_data, AckPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	for (int i = 0; i < count; ++i)
+	{
+		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+	}
+	rudp_delivery_status(fd, AckPacketId, true);
+}
+
+static void ReceivedNak(struct rudp_fd* fd, int32_t NakPacketId)
+{
+	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->rudp_bunch_data, NakPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	for (int i = 0; i < count; ++i)
+	{
+		int32_t packet_id = WriteBitsToSendBuffer(fd, rudp_bunch_node[i]->bunch_data, rudp_bunch_node[i]->bunch_data_len);
+		rudp_bunch_node[i]->packet_id = packet_id;
+		add_outcoming_data(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+	}
+	rudp_delivery_status(fd, NakPacketId, false);
 }
 
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)

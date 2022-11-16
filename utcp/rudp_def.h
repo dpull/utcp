@@ -35,9 +35,18 @@ extern "C" {
 
 #define RELIABLE_BUFFER 256
 
-#pragma once
-
 #define MAX_PACKETID (1 << 14)
+
+enum
+{
+	PACKET_ID_INDEX_NONE = -1
+};
+
+struct packet_id_range
+{
+	int32_t First;
+	int32_t Last;
+};
 
 enum rudp_state
 {
@@ -136,6 +145,21 @@ struct rudp_fd
 	uint8_t AllowMerge; // Whether to allow merging.
 
 	struct rudp_bunch_data rudp_bunch_data;
+};
+
+struct rudp_config
+{
+	void (*on_accept)(struct rudp_fd* fd, void* userdata, bool reconnect);
+	void (*on_raw_send)(struct rudp_fd* fd, void* userdata, const void* data, int len);
+	void (*on_recv)(struct rudp_fd* fd, void* userdata, const struct rudp_bunch* bunches[], int count);
+	void (*on_delivery_status)(struct rudp_fd* fd, void* userdata, int32_t packet_id, bool ack);
+	void (*log)(const char* level, const char* msg);
+
+	int64_t ElapsedTime;
+	uint32_t MagicHeader;
+	uint8_t MagicHeaderBits;
+	uint8_t enable_debug_cookie;
+	uint8_t debug_cookie[COOKIE_BYTE_SIZE];
 };
 
 #ifdef __cplusplus

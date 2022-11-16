@@ -19,6 +19,7 @@ size_t bitbuf_left_bytes(struct bitbuf* buff);
 
 bool bitbuf_write_init(struct bitbuf* buff, uint8_t* buffer, size_t size);
 void bitbuf_write_reuse(struct bitbuf* buff, uint8_t* buffer, size_t num_bits, size_t size);
+bool bitbuf_write_end(struct bitbuf* buff);
 bool bitbuf_write_bit(struct bitbuf* buff, uint8_t value);
 bool bitbuf_write_bits(struct bitbuf* buff, const void* data, size_t bits_size);
 bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size);

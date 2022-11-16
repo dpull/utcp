@@ -30,7 +30,7 @@ TEST(bunch, read_write)
 	ASSERT_TRUE(bitbuf_write_init(&bitbuf1, buffer, sizeof(buffer)));
 	ASSERT_TRUE(rudp_bunch_write_header(&rudp_bunch1, &bitbuf1));
 	ASSERT_TRUE(bitbuf_write_bits(&bitbuf1, rudp_bunch1.Data, rudp_bunch1.DataBitsLen));
-	bitbuf_write_bit(&bitbuf1, 1);
+	bitbuf_write_end(&bitbuf1);
 
 	struct rudp_bunch rudp_bunch2;
 	memset(&rudp_bunch2, 0, sizeof(rudp_bunch2));

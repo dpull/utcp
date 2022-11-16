@@ -1,6 +1,7 @@
 ﻿#include "rudp_handshake.h"
 #include "bit_buffer.h"
 #include "rudp.h"
+#include "rudp_config.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,7 @@ void CapHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(fd, 0);
 	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
 	// Add a termination bit, the same as the UNetConnection code does
-	bitbuf_write_bit(bitbuf, 1);
+	bitbuf_write_end(bitbuf);
 }
 
 void UpdateSecret(struct rudp_fd* fd)

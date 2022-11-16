@@ -2,6 +2,7 @@
 #include "bit_buffer.h"
 #include "rudp.h"
 #include "rudp_bunch.h"
+#include "rudp_config.h"
 #include "rudp_handshake.h"
 #include "rudp_packet_notify.h"
 #include <assert.h>
@@ -47,8 +48,8 @@ static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max
 	return Reference + BestSignedDifference(Value, Reference, Max);
 }
 
-// TODO 这儿返回值有bug, 要区分是不是已经删除了
 // UChannel::ReceivedNextBunch
+// 原本ReceivedNextBunch返回值是bDeleted, 为了简化, 该函数做释放或者引用
 static bool ReceivedNextBunch(struct rudp_fd* fd, struct rudp_bunch_node* rudp_bunch_node, bool* bOutSkipAck)
 {
 	// We received the next bunch. Basically at this point:
@@ -73,25 +74,31 @@ static bool ReceivedNextBunch(struct rudp_fd* fd, struct rudp_bunch_node* rudp_b
 	if (bPartial)
 	{
 		int ret = merge_partial_data(&fd->rudp_bunch_data, rudp_bunch_node, bOutSkipAck);
-		switch (ret)
+		if (ret == 0)
 		{
-		case -1:
-			return false;
-		case 0:
 			return true;
-		case 1:
+		}
+		else if (ret == 1)
+		{
 			HandleBunchCount = get_partial_bunch(&fd->rudp_bunch_data, HandleBunch, HandleBunchCount);
-		default:
-			assert(false);
+		}
+		else
+		{
+			assert(ret == -1);
+			free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
 			return false;
 		}
 	}
 
-	rudp_on_recv(fd, HandleBunch, HandleBunchCount);
+	rudp_recv(fd, HandleBunch, HandleBunchCount);
 	if (bPartial)
 	{
 		assert(HandleBunchCount > 1);
 		clear_partial_data(&fd->rudp_bunch_data);
+	}
+	else
+	{
+		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
 	}
 	return true;
 }
@@ -103,7 +110,7 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		return -1;
 
 	int ret = 0;
-	uint16_t ChIndex  = 0;
+	uint16_t ChIndex = 0;
 	do
 	{
 		struct rudp_bunch* rudp_bunch = &rudp_bunch_node->rudp_bunch;
@@ -134,8 +141,12 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 			break;
 		}
 
+		assert(rudp_bunch_node->dl_list_node.prev == NULL);
+		assert(rudp_bunch_node->dl_list_node.next == NULL);
 		ReceivedNextBunch(fd, rudp_bunch_node, bOutSkipAck);
-
+		assert(rudp_bunch_node->dl_list_node.prev != NULL);
+		assert(rudp_bunch_node->dl_list_node.next != NULL);
+		rudp_bunch_node = NULL;
 	} while (false);
 
 	if (rudp_bunch_node)
@@ -154,8 +165,12 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
 		// Definitely want to warn when this happens, since it's really not possible
 		bool bLocalSkipAck = false;
+		assert(rudp_bunch_node->dl_list_node.prev == NULL);
+		assert(rudp_bunch_node->dl_list_node.next == NULL);
 		ReceivedNextBunch(fd, rudp_bunch_node, &bLocalSkipAck);
-		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
+		assert(rudp_bunch_node->dl_list_node.prev != NULL);
+		assert(rudp_bunch_node->dl_list_node.next != NULL);
+		rudp_bunch_node = NULL;
 	}
 	return ret;
 }
@@ -353,7 +368,7 @@ void WriteFinalPacketInfo(struct rudp_fd* fd, struct bitbuf* bitbuf)
 {
 }
 
-bool check_can_send(struct rudp_fd* fd, const struct rudp_bunch* bunches[], int bunches_count)
+bool check_can_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
 {
 	for (int i = 0; i < bunches_count; ++i)
 	{
