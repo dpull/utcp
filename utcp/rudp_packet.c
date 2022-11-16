@@ -19,7 +19,6 @@ enum
 	MAX_BUNCH_HEADER_BITS = 256,
 	MaxPacketHandlerBits = 2,
 	MAX_SINGLE_BUNCH_SIZE_BITS = (MaxPacket * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
-	RELIABLE_BUFFER = 256,
 };
 
 static void check_bit(struct bitbuf* bitbuf, uint8_t exp)
@@ -38,13 +37,17 @@ static void check_int(struct bitbuf* bitbuf, uint32_t exp)
 	assert(val == exp);
 }
 
-// UChannel::ReceivedSequencedBunch
-static bool ReceivedSequencedBunch(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
+static inline int32_t BestSignedDifference(int32_t Value, int32_t Reference, int32_t Max)
 {
-
-	return true;
+	return ((Value - Reference + Max / 2) & (Max - 1)) - Max / 2;
 }
 
+static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max)
+{
+	return Reference + BestSignedDifference(Value, Reference, Max);
+}
+
+// TODO 这儿返回值有bug, 要区分是不是已经删除了
 // UChannel::ReceivedNextBunch
 static bool ReceivedNextBunch(struct rudp_fd* fd, struct rudp_bunch_node* rudp_bunch_node, bool* bOutSkipAck)
 {
@@ -100,14 +103,26 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		return -1;
 
 	int ret = 0;
+	uint16_t ChIndex  = 0;
 	do
 	{
 		struct rudp_bunch* rudp_bunch = &rudp_bunch_node->rudp_bunch;
+		ChIndex = rudp_bunch->ChIndex;
 
-		if (!rudp_bunch_read(rudp_bunch, bitbuf, fd))
+		if (!rudp_bunch_read(rudp_bunch, bitbuf))
 		{
 			ret = -2;
 			break;
+		}
+
+		if (rudp_bunch->bReliable)
+		{
+			rudp_bunch->ChSequence = MakeRelative(rudp_bunch->ChSequence, fd->InReliable[ChIndex], MAX_CHSEQUENCE);
+		}
+		else if (rudp_bunch->bPartial)
+		{
+			// If this is an unreliable partial bunch, we simply use packet sequence since we already have it
+			rudp_bunch->ChSequence = fd->InPacketId;
 		}
 
 		if (rudp_bunch->bReliable && rudp_bunch->ChSequence != fd->InReliable[rudp_bunch->ChIndex] + 1)
@@ -127,6 +142,19 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 	{
 		assert(rudp_bunch_node->dl_list_node.prev == NULL);
 		assert(rudp_bunch_node->dl_list_node.next == NULL);
+		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
+		rudp_bunch_node = NULL;
+	}
+
+	while (true)
+	{
+		rudp_bunch_node = dequeue_incoming_data(&fd->rudp_bunch_data, fd->InReliable[ChIndex] + 1);
+		if (!rudp_bunch_node)
+			break;
+		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
+		// Definitely want to warn when this happens, since it's really not possible
+		bool bLocalSkipAck = false;
+		ReceivedNextBunch(fd, rudp_bunch_node, &bLocalSkipAck);
 		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
 	}
 	return ret;
@@ -360,15 +388,61 @@ bool check_can_send(struct rudp_fd* fd, const struct rudp_bunch* bunches[], int 
 		}
 	}
 
-	const bool bOverflowsReliable = (fd->NumOutRec + bunches_count >= RELIABLE_BUFFER);
+	const bool bOverflowsReliable = (fd->rudp_bunch_data.NumOutRec + bunches_count >= RELIABLE_BUFFER);
 	if (bOverflowsReliable)
 		return false;
 	return true;
 }
 
-int32_t SendRawBunch(struct rudp_fd* fd, const struct rudp_bunch* bunch)
+// UNetConnection::SendRawBunch
+int32_t SendRawBunch(struct rudp_fd* fd, struct rudp_bunch* bunch)
 {
-	return 0;
+	//  UChannel::PrepBunch
+	if (bunch->bReliable)
+	{
+		bunch->ChSequence = ++fd->OutReliable[bunch->ChIndex];
+	}
+
+	uint8_t buffer[MaxPacket];
+	struct bitbuf bitbuf;
+	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
+	{
+		assert(false);
+		return -1;
+	}
+
+	if (!rudp_bunch_write_header(bunch, &bitbuf))
+	{
+		assert(false);
+		return -1;
+	}
+
+	// If the bunch does not fit in the current packet,
+	// flush packet now so that we can report collected stats in the correct scope
+	PrepareWriteBitsToSendBuffer(fd, (int32_t)bitbuf.num, bunch->DataBitsLen);
+
+	// Write the bits to the buffer and remember the packet id used
+	int32_t PacketId = WriteBitsToSendBufferInternal(fd, buffer, (int32_t)bitbuf.num, bunch->Data, bunch->DataBitsLen);
+	if (PacketId < 0)
+	{
+		assert(false);
+		return -1;
+	}
+
+	if (bunch->bReliable)
+	{
+		struct rudp_bunch_node* rudp_bunch_node = alloc_rudp_bunch_node(&fd->rudp_bunch_data);
+		struct bitbuf bitbuf_all;
+		bitbuf_write_init(&bitbuf_all, rudp_bunch_node->bunch_data, sizeof(rudp_bunch_node->bunch_data));
+		bitbuf_write_bits(&bitbuf_all, buffer, bitbuf.num);
+		bitbuf_write_bits(&bitbuf_all, bunch->Data, bunch->DataBitsLen);
+
+		rudp_bunch_node->packet_id = PacketId;
+		rudp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
+		add_outcoming_data(&fd->rudp_bunch_data, rudp_bunch_node);
+	}
+
+	return PacketId;
 }
 
 // UNetConnection::WriteBitsToSendBuffer
@@ -376,12 +450,4 @@ int WriteBitsToSendBuffer(struct rudp_fd* fd, char* buffer, int bits_len)
 {
 	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
 	return WriteBitsToSendBufferInternal(fd, NULL, 0, buffer, bits_len);
-}
-
-void ReceivedAck(struct rudp_fd* fd, int32_t AckPacketId)
-{
-}
-
-void ReceivedNak(struct rudp_fd* fd, int32_t AckPacketId)
-{
 }

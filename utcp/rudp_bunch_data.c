@@ -17,6 +17,7 @@ void init_rudp_bunch_data(struct rudp_bunch_data* rudp_bunch_data)
 
 	dl_list_init(&rudp_bunch_data->InRec);
 	dl_list_init(&rudp_bunch_data->InPartialBunch);
+	dl_list_init(&rudp_bunch_data->OutRec);
 }
 
 struct rudp_bunch_node* alloc_rudp_bunch_node(struct rudp_bunch_data* rudp_bunch_data)
@@ -60,6 +61,7 @@ bool enqueue_incoming_data(struct rudp_bunch_data* rudp_bunch_data, struct rudp_
 	}
 	assert(dl_list_node);
 	dl_list_push_front(dl_list_node, &rudp_bunch_node->dl_list_node);
+	rudp_bunch_data->NumInRec++;
 	return true;
 }
 
@@ -78,6 +80,7 @@ struct rudp_bunch_node* dequeue_incoming_data(struct rudp_bunch_data* rudp_bunch
 	}
 
 	dl_list_pop_front(&rudp_bunch_data->InRec);
+	rudp_bunch_data->NumInRec--;
 	return rudp_bunch_node;
 }
 
@@ -250,9 +253,32 @@ int get_partial_bunch(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch
 
 void add_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch_node* rudp_bunch_node)
 {
+	assert(rudp_bunch_node->packet_id >= 0);
+	dl_list_push_back(&rudp_bunch_data->OutRec, &rudp_bunch_node->dl_list_node);
+	rudp_bunch_data->NumOutRec++;
 }
 
-struct rudp_bunch_node* remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id)
+int remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id, struct rudp_bunch_node* bunch_node[], int bunch_node_size)
 {
-	return NULL;
+	int count = 0;
+	struct dl_list_node* dl_list_node = rudp_bunch_data->OutRec.next;
+	while (dl_list_node != &rudp_bunch_data->OutRec)
+	{
+		struct rudp_bunch_node* cur_rudp_bunch_node = CONTAINING_RECORD(dl_list_node, struct rudp_bunch_node, dl_list_node);
+		if (packet_id == cur_rudp_bunch_node->packet_id)
+		{
+			dl_list_erase(dl_list_node);
+			rudp_bunch_data->NumOutRec--;
+
+			assert(count < bunch_node_size);
+			bunch_node[count] = cur_rudp_bunch_node;
+			count++;
+		}
+		if (packet_id < cur_rudp_bunch_node->packet_id)
+		{
+			break;
+		}
+		dl_list_node = dl_list_node->next;
+	}
+	return count;
 }

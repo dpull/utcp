@@ -33,6 +33,8 @@ extern "C" {
 // The minimum amount of possible time a cookie may exist (for calculating when the clientside should timeout a challenge response)
 #define MIN_COOKIE_LIFETIME SECRET_UPDATE_TIME
 
+#define RELIABLE_BUFFER 256
+
 #pragma once
 
 #define MAX_PACKETID (1 << 14)
@@ -119,9 +121,6 @@ struct rudp_fd
 	int32_t InitInReliable;
 	int32_t OutReliable[DEFAULT_MAX_CHANNEL_SIZE];
 	int32_t InReliable[DEFAULT_MAX_CHANNEL_SIZE];
-
-	int32_t NumInRec;  // Number of packets in InRec.
-	int32_t NumOutRec; // Number of packets in OutRec.
 
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
 	uint32_t HasDirtyAcks;

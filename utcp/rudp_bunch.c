@@ -12,17 +12,20 @@
 		VAR = __VALUE;                                                                                                                                         \
 	} while (0);
 
-static inline int32_t BestSignedDifference(int32_t Value, int32_t Reference, int32_t Max)
-{
-	return ((Value - Reference + Max / 2) & (Max - 1)) - Max / 2;
-}
+#define BITBUF_WRITE_BIT(VAR)                                                                                                                                  \
+	do                                                                                                                                                         \
+	{                                                                                                                                                          \
+		if (!bitbuf_write_bit(bitbuf, VAR))                                                                                                                    \
+			return false;                                                                                                                                      \
+	} while (0);
 
-static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max)
+enum
 {
-	return Reference + BestSignedDifference(Value, Reference, Max);
-}
+	EChannelCloseReasonMAX = 15
+};
 
-bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struct rudp_fd* fd)
+// UNetConnection::ReceivedPacket
+bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf)
 {
 	memset(rudp_bunch, 0, sizeof(*rudp_bunch));
 	uint8_t bControl;
@@ -35,10 +38,11 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 		BITBUF_READ_BIT(rudp_bunch->bClose);
 	}
 
+	rudp_bunch->CloseReason = 0;
 	if (rudp_bunch->bClose)
 	{
 		uint32_t CloseReason;
-		if (!bitbuf_read_int(bitbuf, &CloseReason, 15))
+		if (!bitbuf_read_int(bitbuf, &CloseReason, EChannelCloseReasonMAX))
 			return false;
 		rudp_bunch->CloseReason = CloseReason;
 	}
@@ -57,30 +61,29 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 	BITBUF_READ_BIT(rudp_bunch->bHasMustBeMappedGUIDs);
 	BITBUF_READ_BIT(rudp_bunch->bPartial);
 
+	rudp_bunch->ChSequence = 0;
 	if (rudp_bunch->bReliable)
 	{
 		uint32_t ChSequence = 0;
-		if (!bitbuf_read_int(bitbuf, &ChSequence, MAX_CHSEQUENCE))
+		if (!bitbuf_read_int(bitbuf, &rudp_bunch->ChSequence, MAX_CHSEQUENCE))
 		{
 			return false;
 		}
-		rudp_bunch->ChSequence = MakeRelative(ChSequence, fd->InReliable[rudp_bunch->ChIndex], MAX_CHSEQUENCE);
 	}
-	else if (rudp_bunch->bPartial)
+
+	rudp_bunch->bPartialInitial = 0;
+	rudp_bunch->bPartialFinal = 0;
+	if (rudp_bunch->bPartial)
 	{
-		// If this is an unreliable partial bunch, we simply use packet sequence since we already have it
-		rudp_bunch->ChSequence = fd->InPacketId;
-	}
-	else
-	{
-		assert(rudp_bunch->ChSequence == 0);
-		rudp_bunch->ChSequence = 0;
+		BITBUF_READ_BIT(rudp_bunch->bPartialInitial);
+		BITBUF_READ_BIT(rudp_bunch->bPartialFinal);
 	}
 
 	if (rudp_bunch->bReliable || rudp_bunch->bOpen)
 	{
-		BITBUF_READ_BIT(rudp_bunch->bHardcoded);
-		if (!rudp_bunch->bHardcoded)
+		uint8_t bHardcoded;
+		BITBUF_READ_BIT(bHardcoded);
+		if (!bHardcoded)
 		{
 			// TODO 暂时不支持
 			assert(false);
@@ -93,7 +96,7 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 		rudp_bunch->NameIndex = NameIndex;
 	}
 
-	uint32_t BunchDataBits; // 80
+	uint32_t BunchDataBits; 
 	if (!bitbuf_read_int(bitbuf, &BunchDataBits, MaxPacket * 8))
 		return false;
 	rudp_bunch->DataBitsLen = BunchDataBits;
@@ -102,7 +105,55 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struc
 	return true;
 }
 
-bool rudp_bunch_write(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf, struct rudp_fd* fd)
+// UNetConnection::SendRawBunch
+bool rudp_bunch_write_header(const struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf)
 {
-	return false;
+	const bool bIsOpenOrClose = rudp_bunch->bOpen || rudp_bunch->bClose;
+	const bool bIsOpenOrReliable = rudp_bunch->bOpen || rudp_bunch->bReliable;
+
+	BITBUF_WRITE_BIT(bIsOpenOrClose);
+	if (bIsOpenOrClose)
+	{
+		BITBUF_WRITE_BIT(rudp_bunch->bOpen);
+		BITBUF_WRITE_BIT(rudp_bunch->bClose);
+
+		if (rudp_bunch->bClose)
+		{
+			if (!bitbuf_write_int(bitbuf, rudp_bunch->CloseReason, EChannelCloseReasonMAX))
+				return false;
+		}
+	}
+
+	BITBUF_WRITE_BIT(rudp_bunch->bIsReplicationPaused);
+	BITBUF_WRITE_BIT(rudp_bunch->bReliable);
+
+	if (!bitbuf_write_int_packed(bitbuf, rudp_bunch->ChIndex))
+		return false;
+
+	BITBUF_WRITE_BIT(rudp_bunch->bHasPackageMapExports);
+	BITBUF_WRITE_BIT(rudp_bunch->bHasMustBeMappedGUIDs);
+	BITBUF_WRITE_BIT(rudp_bunch->bPartial);
+
+	if (rudp_bunch->bReliable)
+	{
+		if (!bitbuf_write_int_wrapped(bitbuf, rudp_bunch->ChSequence, MAX_CHSEQUENCE))
+			return false;
+	}
+
+	if (rudp_bunch->bPartial)
+	{
+		BITBUF_WRITE_BIT(rudp_bunch->bPartialInitial);
+		BITBUF_WRITE_BIT(rudp_bunch->bPartialFinal);
+	}
+
+	if (bIsOpenOrReliable)
+	{
+		BITBUF_WRITE_BIT(1);
+		if (!bitbuf_write_int_packed(bitbuf, rudp_bunch->NameIndex))
+			return false;
+	}
+
+	if (!bitbuf_write_int_wrapped(bitbuf, rudp_bunch->DataBitsLen, MaxPacket * 8))
+		return false;
+	return true;
 }

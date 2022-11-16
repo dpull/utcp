@@ -29,3 +29,7 @@ endif(APPLE)
 if(WIN32)
     target_link_libraries(${APP_NAME} "ws2_32.lib")
 endif(WIN32)
+
+if(LINUX)
+    target_link_libraries(${APP_NAME} "pthread")
+endif(LINUX)

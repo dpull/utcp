@@ -21,7 +21,7 @@ void rudp_raw_accept(struct rudp_fd* fd, bool new_conn, char* buffer, size_t len
 int64_t rudp_gettime_ms(void);
 double rudp_gettime(void); // GetElapsedTime
 
-inline static void rudp_set_state(struct rudp_fd* fd, enum rudp_state state)
+static inline void rudp_set_state(struct rudp_fd* fd, enum rudp_state state)
 {
 	fd->state = state;
 }

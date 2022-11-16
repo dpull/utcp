@@ -22,6 +22,9 @@ void bitbuf_write_reuse(struct bitbuf* buff, uint8_t* buffer, size_t num_bits, s
 bool bitbuf_write_bit(struct bitbuf* buff, uint8_t value);
 bool bitbuf_write_bits(struct bitbuf* buff, const void* data, size_t bits_size);
 bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size);
+bool bitbuf_write_int(struct bitbuf* buff, uint32_t value, uint32_t value_max);
+bool bitbuf_write_int_packed(struct bitbuf* buff, uint32_t value);
+bool bitbuf_write_int_wrapped(struct bitbuf* buff, uint32_t value, uint32_t value_max);
 
 bool bitbuf_read_init(struct bitbuf* buff, const uint8_t* data, size_t len);
 bool bitbuf_read_bit(struct bitbuf* buff, uint8_t* value);

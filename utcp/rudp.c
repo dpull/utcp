@@ -97,12 +97,37 @@ void rudp_on_recv(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_
 	rudp_env.callback(fd, fd->userdata, callback_recv_bunches, bunches, bunches_count);
 }
 
+void ReceivedAck(struct rudp_fd* fd, int32_t AckPacketId)
+{
+	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->rudp_bunch_data, AckPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	for (int i = 0; i < count; ++i)
+	{
+		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+	}
+	rudp_env.callback(fd, fd->userdata, callback_recv_ack, &AckPacketId, (int)sizeof(AckPacketId));
+}
+
+void ReceivedNak(struct rudp_fd* fd, int32_t NakPacketId)
+{
+	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->rudp_bunch_data, NakPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	for (int i = 0; i < count; ++i)
+	{
+		int32_t packet_id = WriteBitsToSendBuffer(fd, rudp_bunch_node[i]->bunch_data, rudp_bunch_node[i]->bunch_data_len);
+		rudp_bunch_node[i]->packet_id = packet_id;
+		add_outcoming_data(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+	}
+	rudp_env.callback(fd, fd->userdata, callback_recv_nak, &NakPacketId, (int)sizeof(NakPacketId));
+}
+
 void rudp_init(struct rudp_fd* fd, void* userdata, int is_client)
 {
 	memset(fd, 0, sizeof(*fd));
 	fd->userdata = userdata;
 	fd->mode = is_client ? Client : Server;
 	fd->ActiveSecret = 255;
+	init_rudp_bunch_data(&fd->rudp_bunch_data);
 
 	if (is_client)
 	{
@@ -235,11 +260,21 @@ int rudp_update(struct rudp_fd* fd)
 	return 0;
 }
 
-struct packet_id_range rudp_send(struct rudp_fd* fd, const struct rudp_bunch* bunches[], int bunches_count)
+struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
 {
 	struct packet_id_range PacketIdRange = {PACKET_ID_INDEX_NONE, PACKET_ID_INDEX_NONE};
 	if (!check_can_send(fd, bunches, bunches_count))
 		return PacketIdRange;
+
+	for (int i = 0; i < bunches_count; ++i)
+	{
+		int32_t PacketId = SendRawBunch(fd, bunches[i]);
+		assert(PacketId >= 0);
+		if (i == 0)
+			PacketIdRange.First = PacketId;
+		else
+			PacketIdRange.Last = PacketId;
+	}
 
 	return PacketIdRange;
 }

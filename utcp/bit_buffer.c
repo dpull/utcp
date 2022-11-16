@@ -1,4 +1,5 @@
 ﻿#include "bit_buffer.h"
+#include <assert.h>
 #include <string.h>
 
 const uint8_t GShift[8] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
@@ -17,6 +18,26 @@ static inline int MAX(int a, int b)
 static bool allow_opt(struct bitbuf* buff, size_t bits_length)
 {
 	return buff->num + bits_length <= buff->size;
+}
+
+static uint32_t CeilLogTwo(uint32_t x)
+{
+	static const uint8_t log_2[256] = {/* log_2[i] = ceil(log2(i - 1)) */
+									   0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6,
+									   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+									   7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+									   7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+									   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+									   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+									   8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8};
+	int l = 0;
+	x--;
+	while (x >= 256)
+	{
+		l += 8;
+		x >>= 8;
+	}
+	return l + log_2[x];
 }
 
 static void appBitsCpy(uint8_t* Dest, int32_t DestBit, const uint8_t* Src, int32_t SrcBit, int32_t BitCount)
@@ -184,6 +205,93 @@ bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size)
 		return false;
 	appBitsCpy(buff->buffer, (int)buff->num, data, 0, (int)bits_size);
 	buff->num += bits_size;
+	return true;
+}
+
+bool bitbuf_write_int(struct bitbuf* buff, uint32_t value, uint32_t value_max)
+{
+	assert(value_max >= 2);
+
+	const int32_t LengthBits = CeilLogTwo(value_max);
+	uint32_t WriteValue = value;
+
+	if (WriteValue >= value_max)
+		return false;
+
+	if (!allow_opt(buff, LengthBits))
+		return false;
+
+	uint32_t NewValue = 0;
+	size_t LocalNum = buff->num; // Use local var to avoid LHS
+
+	for (uint32_t Mask = 1; (NewValue + Mask) < value_max && Mask; Mask *= 2, LocalNum++)
+	{
+		if (WriteValue & Mask)
+		{
+			buff->buffer[LocalNum >> 3] += GShift[LocalNum & 7];
+			NewValue += Mask;
+		}
+	}
+
+	buff->num = LocalNum;
+	return true;
+}
+
+bool bitbuf_write_int_packed(struct bitbuf* buff, uint32_t InValue)
+{
+	uint32_t Value = InValue;
+	uint32_t BytesAsWords[5];
+	uint32_t ByteCount = 0;
+	for (unsigned It = 0; (It == 0) | (Value != 0); ++It, Value = Value >> 7U)
+	{
+		const uint32_t NextByteIndicator = (Value & ~0x7FU) != 0;
+		const uint32_t ByteAsWord = ((Value & 0x7FU) << 1U) | NextByteIndicator;
+		BytesAsWords[ByteCount++] = ByteAsWord;
+	}
+
+	const int64_t LengthBits = ByteCount * 8;
+	if (!allow_opt(buff, LengthBits))
+		return false;
+
+	const uint32_t BitCountUsedInByte = buff->num & 7;
+	const uint32_t BitCountLeftInByte = 8 - (buff->num & 7);
+	const uint8_t DestMaskByte0 = (uint8_t)((1U << BitCountUsedInByte) - 1U);
+	const uint8_t DestMaskByte1 = 0xFFU ^ DestMaskByte0;
+	const bool bStraddlesTwoBytes = (BitCountUsedInByte != 0);
+	uint8_t* Dest = buff->buffer + (buff->num >> 3U);
+
+	buff->num += LengthBits;
+	for (uint32_t ByteIt = 0; ByteIt != ByteCount; ++ByteIt)
+	{
+		const uint32_t ByteAsWord = BytesAsWords[ByteIt];
+
+		*Dest = (*Dest & DestMaskByte0) | (uint8_t)(ByteAsWord << BitCountUsedInByte);
+		++Dest;
+		if (bStraddlesTwoBytes)
+			*Dest = (*Dest & DestMaskByte1) | (uint8_t)(ByteAsWord >> BitCountLeftInByte);
+	}
+	return true;
+}
+
+bool bitbuf_write_int_wrapped(struct bitbuf* buff, uint32_t value, uint32_t value_max)
+{
+	assert(value_max >= 2);
+
+	const int32_t LengthBits = CeilLogTwo(value_max);
+
+	if (!allow_opt(buff, LengthBits))
+		return false;
+
+	uint32_t NewValue = 0;
+
+	for (uint32_t Mask = 1; NewValue + Mask < value_max && Mask; Mask *= 2, buff->num++)
+	{
+		if (value & Mask)
+		{
+			buff->buffer[buff->num >> 3] += GShift[buff->num & 7];
+			NewValue += Mask;
+		}
+	}
 	return true;
 }
 

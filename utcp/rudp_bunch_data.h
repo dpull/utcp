@@ -41,7 +41,6 @@ struct rudp_bunch
 	uint8_t bPartial : 1;
 	uint8_t bPartialInitial : 1;
 	uint8_t bPartialFinal : 1;
-	uint8_t bHardcoded : 1;
 
 	uint8_t Data[UDP_MTU_SIZE];
 };
@@ -55,8 +54,8 @@ struct rudp_bunch_node
 		struct
 		{
 			int32_t packet_id;
-			uint16_t rudp_bunch_data_len;
-			uint8_t rudp_bunch_data[UDP_MTU_SIZE];
+			uint16_t bunch_data_len;
+			uint8_t bunch_data[UDP_MTU_SIZE];
 		};
 	};
 };
@@ -68,6 +67,10 @@ struct rudp_bunch_data
 
 	struct dl_list_node InRec;
 	struct dl_list_node InPartialBunch;
+	struct dl_list_node OutRec;
+
+	int32_t NumInRec;  // Number of packets in InRec.
+	int32_t NumOutRec; // Number of packets in OutRec.
 };
 
 void init_rudp_bunch_data(struct rudp_bunch_data* rudp_bunch_data);
@@ -83,4 +86,4 @@ void clear_partial_data(struct rudp_bunch_data* rudp_bunch_data);
 int get_partial_bunch(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch* bunches[], int bunches_size);
 
 void add_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, struct rudp_bunch_node* rudp_bunch_node);
-struct rudp_bunch_node* remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id);
+int remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packet_id, struct rudp_bunch_node* bunch_node[], int bunch_node_size);

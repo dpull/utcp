@@ -26,6 +26,8 @@ enum callback_type
 	callback_reconn,
 	callback_send,
 	callback_recv_bunches,
+	callback_recv_ack,
+	callback_recv_nak,
 };
 typedef int (*callback_fn)(struct rudp_fd* fd, void* userdata, enum callback_type callback_type, const void* data, int len);
 
@@ -42,7 +44,7 @@ int rudp_incoming(struct rudp_fd* fd, char* buffer, int len);
 int rudp_accept_incoming(struct rudp_fd* fd, const char* address, const char* buffer, int len);
 int rudp_update(struct rudp_fd* fd);
 
-struct packet_id_range rudp_send(struct rudp_fd* fd, const struct rudp_bunch* bunches[], int bunches_count);
+struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count);
 
 void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence);
 int rudp_flush(struct rudp_fd* fd);
