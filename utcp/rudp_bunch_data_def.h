@@ -7,6 +7,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#if defined(__linux) || defined(__APPLE__)
+#define _countof(array) (sizeof(array) / sizeof(array[0]))
+#endif
+
 /*
 ------------------------------------------------------------------------------
 |Ethernet  | IPv4         |UDP    | Data                   |Ethernet checksum|

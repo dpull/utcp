@@ -204,8 +204,8 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 		return -8;
 	}
 
-	const bool bFlushingPacketOrderCache = false;
-	if (bFlushingPacketOrderCache)
+	const bool bPacketOrderCacheActive = false;
+	if (bPacketOrderCacheActive)
 	{
 		// 按照我们的设计, PacketOrderCache 以及 FlushPacketOrderCache 功能由外部实现
 		const int32_t MissingPacketCount = PacketSequenceDelta - 1;

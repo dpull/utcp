@@ -12,10 +12,6 @@ extern "C" {
 #include "rudp_bunch_data_def.h"
 #include "rudp_packet_notify_def.h"
 
-#if defined(__linux) || defined(__APPLE__)
-#define _countof(array) (sizeof(array) / sizeof(array[0]))
-#endif
-
 #define HANDSHAKE_PACKET_SIZE_BITS 227
 #define RESTART_HANDSHAKE_PACKET_SIZE_BITS 2
 #define RESTART_RESPONSE_SIZE_BITS 387

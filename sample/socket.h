@@ -20,6 +20,7 @@ using ssize_t = int;
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <netdb.h>
 
 using socket_t = int;
 constexpr socket_t INVALID_SOCKET = -1;

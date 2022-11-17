@@ -2,10 +2,6 @@
 #include <cassert>
 #include <cstring>
 
-utcp_listener::utcp_listener() : utcp_connection(false)
-{
-}
-
 static bool sockaddr2str(sockaddr_in* addr, char ipstr[], int size)
 {
 	if (!inet_ntop(addr->sin_family, &addr->sin_addr, ipstr, size))
@@ -16,48 +12,76 @@ static bool sockaddr2str(sockaddr_in* addr, char ipstr[], int size)
 	return true;
 }
 
-void utcp_listener::tick()
+utcp_listener::utcp_listener() : utcp_connection(false)
 {
+}
+
+utcp_listener::~utcp_listener()
+{
+	recv_thread_exit_flag = true;
+	if (recv_thread)
 	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_unordered_queue.swap(proc_unordered_queue);
+		recv_thread->join();
+		delete recv_thread;
 	}
 
-	char ipstr[NI_MAXHOST + 8];
-	for (auto view : proc_unordered_queue)
+	if (socket_fd != INVALID_SOCKET)
 	{
-		assert(view->from_addr_len == sizeof(sockaddr_in));
-		if (sockaddr2str((sockaddr_in*)&view->from_addr, ipstr, sizeof(ipstr)))
+		closesocket(socket_fd);
+	}
+}
+
+bool utcp_listener::listen(const char* ip, int port)
+{
+	assert(socket_fd == INVALID_SOCKET);
+	assert(!recv_thread);
+
+	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (socket_fd == INVALID_SOCKET)
+		return false;
+
+	int one = 1;
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one)) == SOCKET_ERROR)
+		return false;
+
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	struct sockaddr_in* addripv4 = (struct sockaddr_in*)&dest_addr;
+	addripv4->sin_family = AF_INET;
+	addripv4->sin_addr.s_addr = inet_addr(ip);
+	addripv4->sin_port = htons(port);
+	dest_addr_len = sizeof(*addripv4);
+
+	if (bind(socket_fd, (struct sockaddr*)&dest_addr, dest_addr_len) == SOCKET_ERROR)
+		return false;
+
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	dest_addr_len = 0;
+
+	create_recv_thread();
+	return true;
+}
+
+void utcp_listener::create_recv_thread()
+{
+	recv_thread_exit_flag = false;
+
+	recv_thread = new std::thread([this]() {
+		struct sockaddr_storage from_addr;
+		uint8_t buffer[MAX_PACKET_BUFFER_SIZE];
+
+		while (!this->recv_thread_exit_flag)
 		{
-			dest_addr_len = view->from_addr_len;
-			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
-			rudp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
+			socklen_t addr_len = sizeof(from_addr);
+			ssize_t ret = ::recvfrom(socket_fd, (char*)buffer, sizeof(buffer), 0, (struct sockaddr*)&from_addr, &addr_len);
+			if (ret <= 0)
+				continue;
+			proc_recv(buffer, (int)ret, &from_addr, addr_len);
 		}
-		delete view;
-		dest_addr_len = 0;
-	}
-	proc_unordered_queue.clear();
+	});
 }
 
-void utcp_listener::after_tick()
+void utcp_listener::proc_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
 {
-}
-
-int utcp_listener::send(char* bunch, int count)
-{
-	assert(false);
-	return 0;
-}
-
-void utcp_listener::raw_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
-{
-	auto it = clients.find(*(struct sockaddr_in*)&from_addr);
-	if (it != clients.end())
-	{
-		call_raw_recv(it->second, data, data_len, from_addr, from_addr_len);
-		return;
-	}
-
 	auto view = new utcp_packet_view;
 	view->handle = 0;
 	memcpy(view->data, data, data_len);
@@ -67,7 +91,55 @@ void utcp_listener::raw_recv(uint8_t* data, int data_len, struct sockaddr_storag
 
 	{
 		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_unordered_queue.push_back(view);
+		recv_queue.push_back(view);
+	}
+}
+
+void utcp_listener::proc_recv_queue()
+{
+	{
+		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
+		recv_queue.swap(proc_queue);
+	}
+
+	char ipstr[NI_MAXHOST + 8];
+	for (auto view : proc_queue)
+	{
+		assert(view->from_addr_len == sizeof(sockaddr_in));
+		auto it = clients.find(*(sockaddr_in*)&view->from_addr);
+		if (it != clients.end())
+		{
+			it->second->raw_recv(view);
+			continue;
+		}
+
+		if (sockaddr2str((sockaddr_in*)&view->from_addr, ipstr, sizeof(ipstr)))
+		{
+			dest_addr_len = view->from_addr_len;
+			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
+			rudp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
+		}
+		delete view;
+		dest_addr_len = 0;
+	}
+	proc_queue.clear();
+}
+
+void utcp_listener::tick()
+{
+	proc_recv_queue();
+	for (auto it : clients)
+	{
+		it.second->tick();
+	}
+}
+
+void utcp_listener::after_tick()
+{
+	proc_recv_queue();
+	for (auto it : clients)
+	{
+		it.second->after_tick();
 	}
 }
 
@@ -93,15 +165,5 @@ void utcp_listener::on_accept(bool reconnect)
 	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&dest_addr, conn));
 	assert(it.second);
 
-	conn->accept(this);
-}
-
-void utcp_listener::on_recv(const struct rudp_bunch* bunches[], int count)
-{
-	assert(false);
-}
-
-void utcp_listener::on_delivery_status(int32_t packet_id, bool ack)
-{
-	assert(false);
+	conn->accept(this, reconnect);
 }

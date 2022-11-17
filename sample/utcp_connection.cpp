@@ -58,100 +58,54 @@ utcp_connection::utcp_connection(bool is_client)
 
 utcp_connection::~utcp_connection()
 {
-	recv_thread_exit_flag = true;
-	if (recv_thread_exit_flag)
+	if (ordered_cache)
 	{
-		recv_thread->join();
-		delete recv_thread;
-	}
-
-	if (socket_fd != INVALID_SOCKET)
-	{
-		closesocket(socket_fd);
+		delete ordered_cache;
 	}
 }
 
-bool utcp_connection::listen(const char* ip, int port)
+bool utcp_connection::accept(utcp_connection* listener, bool reconnect)
 {
-	assert(socket_fd == INVALID_SOCKET);
-	assert(!recv_thread);
+	memcpy(&dest_addr, &listener->dest_addr, listener->dest_addr_len);
+	dest_addr_len = listener->dest_addr_len;
 
-	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (socket_fd == INVALID_SOCKET)
-		return false;
+	memcpy(rudp.LastChallengeSuccessAddress, listener->rudp.LastChallengeSuccessAddress, sizeof(rudp.LastChallengeSuccessAddress));
 
-	int one = 1;
-	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one)) == SOCKET_ERROR)
-		return false;
+	socket_fd = listener->socket_fd;
 
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	struct sockaddr_in* addripv4 = (struct sockaddr_in*)&dest_addr;
-	addripv4->sin_family = AF_INET;
-	addripv4->sin_addr.s_addr = inet_addr(ip);
-	addripv4->sin_port = htons(port);
-	dest_addr_len = sizeof(*addripv4);
+	assert(!ordered_cache);
+	ordered_cache = new utcp_packet_view_ordered_queue;
 
-	if (bind(socket_fd, (struct sockaddr*)&dest_addr, dest_addr_len) == SOCKET_ERROR)
-		return false;
-
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	dest_addr_len = 0;
-
-	create_recv_thread();
-	return true;
-}
-
-bool utcp_connection::connnect(const char* ip, int port)
-{
-	assert(socket_fd == INVALID_SOCKET);
-	assert(!recv_thread);
-
-	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (socket_fd == INVALID_SOCKET)
-		return false;
-
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	struct sockaddr_in* addripv4 = (struct sockaddr_in*)&dest_addr;
-	addripv4->sin_family = AF_INET;
-	addripv4->sin_addr.s_addr = inet_addr(ip);
-	addripv4->sin_port = htons(port);
-	dest_addr_len = sizeof(*addripv4);
-
-	create_recv_thread();
-	return true;
-}
-
-bool utcp_connection::accept(utcp_connection* server)
-{
-	memcpy(&dest_addr, &server->dest_addr, server->dest_addr_len);
-	dest_addr_len = server->dest_addr_len;
-
-	memcpy(rudp.AuthorisedCookie, server->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie));
-	memcpy(rudp.LastChallengeSuccessAddress, server->rudp.LastChallengeSuccessAddress, sizeof(rudp.LastChallengeSuccessAddress));
-
-	socket_fd = server->socket_fd;
-
-	rudp_sequence_init(&rudp, server->rudp.LastClientSequence, server->rudp.LastServerSequence);
+	if (!reconnect)
+	{
+		memcpy(rudp.AuthorisedCookie, listener->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie));
+		rudp_sequence_init(&rudp, listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
+	}
 	return true;
 }
 
 void utcp_connection::tick()
 {
-	auto view = try_get_packet(1);
-	if (!view)
-		return;
-	printf("tick: %d %s\n", view->handle, view->data);
-	delete view;
+	proc_ordered_cache(false);
 }
 
 void utcp_connection::after_tick()
 {
-	while (auto view = get_packet())
+	proc_ordered_cache(true);
+}
+
+void utcp_connection::raw_recv(utcp_packet_view* view)
+{
+	auto packet_id = rudp_packet_peep_id(&rudp, view->data, view->data_len);
+	if (packet_id <= 0)
 	{
-		printf("after_tick: %d %s\n", view->handle, view->data);
+		rudp_incoming(&rudp, view->data, view->data_len);
 		delete view;
+		return;
 	}
-	printf("after_tick\n");
+
+	view->handle = packet_id;
+	ordered_cache->push(view);
 }
 
 // > 0 packet id
@@ -163,50 +117,23 @@ int utcp_connection::send(char* bunch, int count)
 	return 0;
 }
 
-void utcp_connection::create_recv_thread()
+void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 {
-	recv_thread_exit_flag = false;
-
-	recv_thread = new std::thread([this]() {
-		struct sockaddr_storage from_addr;
-		uint8_t buffer[MAX_PACKET_BUFFER_SIZE];
-
-		while (!this->recv_thread_exit_flag)
-		{
-			socklen_t addr_len = sizeof(from_addr);
-			ssize_t ret = ::recvfrom(socket_fd, (char*)buffer, sizeof(buffer), 0, (struct sockaddr*)&from_addr, &addr_len);
-			if (ret <= 0)
-				continue;
-			this->raw_recv(buffer, (int)ret, &from_addr, addr_len);
-		}
-	});
-}
-
-void utcp_connection::call_raw_recv(utcp_connection* conn, uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
-{
-	conn->raw_recv(data, data_len, from_addr, from_addr_len);
-}
-
-void utcp_connection::raw_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
-{
-	static int test_handle = 0;
-
-	auto view = new utcp_packet_view;
-	view->handle = ++test_handle;
-	memcpy(view->data, data, data_len);
-	view->data_len = data_len;
-	memcpy(&view->from_addr, from_addr, from_addr_len);
-	view->from_addr_len = from_addr_len;
-
+	while (true)
 	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_queue.push(view);
-	}
-}
+		int handle = -1;
+		if (!flushing_order_cache)
+		{
+			handle = 100;
+		}
 
-void utcp_connection::on_accept(bool reconnect)
-{
-	assert(false);
+		auto view = ordered_cache->pop(handle);
+		if (!view)
+			break;
+
+		// TODO
+		delete view;
+	}
 }
 
 void utcp_connection::on_raw_send(const void* data, int len)
@@ -217,32 +144,8 @@ void utcp_connection::on_raw_send(const void* data, int len)
 
 void utcp_connection::on_recv(const struct rudp_bunch* bunches[], int count)
 {
-
 }
 
 void utcp_connection::on_delivery_status(int32_t packet_id, bool ack)
 {
-
-}
-
-utcp_packet_view* utcp_connection::try_get_packet(int handle)
-{
-	std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-	if (recv_queue.empty())
-		return nullptr;
-	auto view = recv_queue.top();
-	if (view->handle != handle)
-		return nullptr;
-	recv_queue.pop();
-	return view;
-}
-
-utcp_packet_view* utcp_connection::get_packet()
-{
-	std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-	if (recv_queue.empty())
-		return nullptr;
-	auto view = recv_queue.top();
-	recv_queue.pop();
-	return view;
 }

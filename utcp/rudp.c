@@ -202,6 +202,7 @@ int32_t rudp_packet_peep_id(struct rudp_fd* fd, uint8_t* buffer, int len)
 
 	// unpack
 	// notification_header->Seq = PackedHeader_GetSeq(PackedHeader);
+	return 0;
 }
 
 struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
