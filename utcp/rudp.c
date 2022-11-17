@@ -1,10 +1,10 @@
 ﻿#include "rudp.h"
 #include "bit_buffer.h"
+#include "rudp_bunch_data.h"
 #include "rudp_config.h"
 #include "rudp_handshake.h"
 #include "rudp_packet.h"
 #include <assert.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define KeepAliveTime (int)(0.2 * 1000)
@@ -37,7 +37,7 @@ void rudp_init(struct rudp_fd* fd, void* userdata, int is_client)
 }
 
 // UIpNetDriver::ProcessConnectionlessPacket
-int rudp_connectionless_incoming(struct rudp_fd* fd, const char* address, const char* buffer, int len)
+int rudp_connectionless_incoming(struct rudp_fd* fd, const char* address, const uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -98,7 +98,7 @@ void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t Ou
 // ReceivedRawPacket
 // PacketHandler
 // StatelessConnectHandlerComponent::Incoming
-int rudp_incoming(struct rudp_fd* fd, char* buffer, int len)
+int rudp_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -177,6 +177,31 @@ int rudp_update(struct rudp_fd* fd)
 		}
 	}
 	return 0;
+}
+
+int32_t rudp_packet_peep_id(struct rudp_fd* fd, uint8_t* buffer, int len)
+{
+	struct bitbuf bitbuf;
+	if (!bitbuf_read_init(&bitbuf, buffer, len))
+		return -1;
+
+	read_magic_header(&bitbuf);
+	uint8_t bHandshakePacket;
+	if (!bitbuf_read_bit(&bitbuf, &bHandshakePacket))
+		return -1;
+
+	if (!bHandshakePacket)
+		return 0;
+
+	// Read packed header
+	uint32_t PackedHeader = 0;
+	if (!bitbuf_read_bytes(&bitbuf, &PackedHeader, sizeof(PackedHeader)))
+	{
+		return -2;
+	}
+
+	// unpack
+	// notification_header->Seq = PackedHeader_GetSeq(PackedHeader);
 }
 
 struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)

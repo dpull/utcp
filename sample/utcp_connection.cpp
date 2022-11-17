@@ -19,6 +19,43 @@ struct WSAGuard
 static WSAGuard _WSAGuard;
 #endif
 
+void log(int level, const char* msg)
+{
+	printf(msg);
+	printf("\n");
+}
+
+void utcp_connection::config_rudp()
+{
+	auto config = rudp_get_config();
+	config->on_accept = [](struct rudp_fd* fd, void* userdata, bool reconnect) {
+		auto conn = static_cast<utcp_connection*>(userdata);
+		assert(&conn->rudp == fd);
+		static_cast<utcp_connection*>(userdata)->on_accept(reconnect);
+	};
+	config->on_raw_send = [](struct rudp_fd* fd, void* userdata, const void* data, int len) {
+		auto conn = static_cast<utcp_connection*>(userdata);
+		assert(&conn->rudp == fd);
+		static_cast<utcp_connection*>(userdata)->on_raw_send(data, len);
+	};
+	config->on_recv = [](struct rudp_fd* fd, void* userdata, const struct rudp_bunch* bunches[], int count) {
+		auto conn = static_cast<utcp_connection*>(userdata);
+		assert(&conn->rudp == fd);
+		static_cast<utcp_connection*>(userdata)->on_recv(bunches, count);
+	};
+	config->on_delivery_status = [](struct rudp_fd* fd, void* userdata, int32_t packet_id, bool ack) {
+		auto conn = static_cast<utcp_connection*>(userdata);
+		assert(&conn->rudp == fd);
+		static_cast<utcp_connection*>(userdata)->on_delivery_status(packet_id, ack);
+	};
+	config->on_log = [](int level, const char* msg) { log(level, msg); };
+}
+
+utcp_connection::utcp_connection(bool is_client)
+{
+	rudp_init(&rudp, this, is_client);
+}
+
 utcp_connection::~utcp_connection()
 {
 	recv_thread_exit_flag = true;
@@ -84,6 +121,20 @@ bool utcp_connection::connnect(const char* ip, int port)
 	return true;
 }
 
+bool utcp_connection::accept(utcp_connection* server)
+{
+	memcpy(&dest_addr, &server->dest_addr, server->dest_addr_len);
+	dest_addr_len = server->dest_addr_len;
+
+	memcpy(rudp.AuthorisedCookie, server->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie));
+	memcpy(rudp.LastChallengeSuccessAddress, server->rudp.LastChallengeSuccessAddress, sizeof(rudp.LastChallengeSuccessAddress));
+
+	socket_fd = server->socket_fd;
+
+	rudp_sequence_init(&rudp, server->rudp.LastClientSequence, server->rudp.LastServerSequence);
+	return true;
+}
+
 void utcp_connection::tick()
 {
 	auto view = try_get_packet(1);
@@ -131,6 +182,11 @@ void utcp_connection::create_recv_thread()
 	});
 }
 
+void utcp_connection::call_raw_recv(utcp_connection* conn, uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
+{
+	conn->raw_recv(data, data_len, from_addr, from_addr_len);
+}
+
 void utcp_connection::raw_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
 {
 	static int test_handle = 0;
@@ -146,6 +202,27 @@ void utcp_connection::raw_recv(uint8_t* data, int data_len, struct sockaddr_stor
 		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
 		recv_queue.push(view);
 	}
+}
+
+void utcp_connection::on_accept(bool reconnect)
+{
+	assert(false);
+}
+
+void utcp_connection::on_raw_send(const void* data, int len)
+{
+	assert(dest_addr_len > 0);
+	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
+}
+
+void utcp_connection::on_recv(const struct rudp_bunch* bunches[], int count)
+{
+
+}
+
+void utcp_connection::on_delivery_status(int32_t packet_id, bool ack)
+{
+
 }
 
 utcp_packet_view* utcp_connection::try_get_packet(int handle)
@@ -168,49 +245,4 @@ utcp_packet_view* utcp_connection::get_packet()
 	auto view = recv_queue.top();
 	recv_queue.pop();
 	return view;
-}
-
-void utcp_listener::tick()
-{
-	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_unordered_queue.swap(proc_unordered_queue);
-	}
-	for (auto view : proc_unordered_queue)
-	{
-		printf("listener::tick: %d %s\n", view->handle, view->data);
-	}
-	proc_unordered_queue.clear();
-}
-
-void utcp_listener::after_tick()
-{
-}
-
-int utcp_listener::send(char* bunch, int count)
-{
-	assert(false);
-	return 0;
-}
-
-void utcp_listener::raw_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
-{
-	auto it = clients.find(*(struct sockaddr_in*)&from_addr);
-	if (it != clients.end())
-	{
-		it->second->raw_recv(data, data_len, from_addr, from_addr_len);
-		return;
-	}
-
-	auto view = new utcp_packet_view;
-	view->handle = 0;
-	memcpy(view->data, data, data_len);
-	view->data_len = data_len;
-	memcpy(&view->from_addr, from_addr, from_addr_len);
-	view->from_addr_len = from_addr_len;
-
-	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_unordered_queue.push_back(view);
-	}
 }

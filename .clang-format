@@ -3,6 +3,6 @@ UseTab: Always
 IndentExternBlock: NoIndent
 IndentWidth: 4
 TabWidth: 4
-ColumnLimit: 160
+ColumnLimit: 180
 DerivePointerAlignment: false
 PointerAlignment: Left

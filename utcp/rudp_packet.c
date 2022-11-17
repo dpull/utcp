@@ -2,12 +2,11 @@
 #include "bit_buffer.h"
 #include "rudp.h"
 #include "rudp_bunch.h"
+#include "rudp_bunch_data.h"
 #include "rudp_config.h"
 #include "rudp_handshake.h"
 #include "rudp_packet_notify.h"
 #include <assert.h>
-#include <stdlib.h>
-#include <string.h>
 
 enum
 {
@@ -185,16 +184,15 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 		return ret;
 	}
 	uint8_t bHasPacketInfoPayload = true;
-	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload)) // true
+	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload)) 
 		return -4;
 	uint32_t PacketJitterClockTimeMS = 0;
 	if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
 	{
 		return -2;
-	} // 1023
+	}
 	assert(PacketJitterClockTimeMS == 1023);
 
-	// 1
 	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
 	if (PacketSequenceDelta <= 0)
 	{
@@ -413,10 +411,9 @@ bool check_can_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunche
 int32_t SendRawBunch(struct rudp_fd* fd, struct rudp_bunch* bunch)
 {
 	//  UChannel::PrepBunch
+	bunch->ChSequence = 0; 
 	if (bunch->bReliable)
-	{
 		bunch->ChSequence = ++fd->OutReliable[bunch->ChIndex];
-	}
 
 	uint8_t buffer[MaxPacket];
 	struct bitbuf bitbuf;

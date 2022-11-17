@@ -1,22 +1,23 @@
 ﻿#include "rudp_bunch.h"
 #include "bit_buffer.h"
+#include "rudp_def.h"
 #include <assert.h>
 #include <string.h>
 
-#define BITBUF_READ_BIT(VAR)                                                                                                                                   \
-	do                                                                                                                                                         \
-	{                                                                                                                                                          \
-		uint8_t __VALUE;                                                                                                                                       \
-		if (!bitbuf_read_bit(bitbuf, &__VALUE))                                                                                                                \
-			return false;                                                                                                                                      \
-		VAR = __VALUE;                                                                                                                                         \
+#define BITBUF_READ_BIT(VAR)                                                                                                                                                       \
+	do                                                                                                                                                                             \
+	{                                                                                                                                                                              \
+		uint8_t __VALUE;                                                                                                                                                           \
+		if (!bitbuf_read_bit(bitbuf, &__VALUE))                                                                                                                                    \
+			return false;                                                                                                                                                          \
+		VAR = __VALUE;                                                                                                                                                             \
 	} while (0);
 
-#define BITBUF_WRITE_BIT(VAR)                                                                                                                                  \
-	do                                                                                                                                                         \
-	{                                                                                                                                                          \
-		if (!bitbuf_write_bit(bitbuf, VAR))                                                                                                                    \
-			return false;                                                                                                                                      \
+#define BITBUF_WRITE_BIT(VAR)                                                                                                                                                      \
+	do                                                                                                                                                                             \
+	{                                                                                                                                                                              \
+		if (!bitbuf_write_bit(bitbuf, VAR))                                                                                                                                        \
+			return false;                                                                                                                                                          \
 	} while (0);
 
 enum
@@ -96,7 +97,7 @@ bool rudp_bunch_read(struct rudp_bunch* rudp_bunch, struct bitbuf* bitbuf)
 		rudp_bunch->NameIndex = NameIndex;
 	}
 
-	uint32_t BunchDataBits; 
+	uint32_t BunchDataBits;
 	if (!bitbuf_read_int(bitbuf, &BunchDataBits, MaxPacket * 8))
 		return false;
 	rudp_bunch->DataBitsLen = BunchDataBits;

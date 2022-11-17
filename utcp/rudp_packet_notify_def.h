@@ -7,10 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define MAX_CHSEQUENCE 1024
 #define MaxSequenceHistoryLength 256
 typedef uint32_t SequenceHistoryWord;
@@ -32,8 +28,8 @@ struct packet_notify
 	// Track incoming sequence data
 	SequenceHistoryWord InSeqHistory[SequenceHistoryWordCount]; // BitBuffer containing a bitfield describing the history of received packets
 	uint16_t InSeq;												// Last sequence number received and accepted from remote
-	uint16_t InAckSeq; // Last sequence number received from remote that we have acknowledged, this is needed since we support accepting a packet but explicitly
-					   // not acknowledge it as received.
+	uint16_t InAckSeq;	  // Last sequence number received from remote that we have acknowledged, this is needed since we support accepting a packet but explicitly
+						  // not acknowledge it as received.
 	uint16_t InAckSeqAck; // Last sequence number received from remote that we have acknowledged and also knows that the remote has received the ack, used to
 						  // calculate how big our history must be
 
@@ -42,8 +38,7 @@ struct packet_notify
 	uint16_t OutAckSeq; // Last sequence number that we know that the remote side have received.
 
 	size_t WrittenHistoryWordCount; // Bookkeeping to track if we can update data
-	uint16_t
-		WrittenInAckSeq; // When we call CommitAndIncrementOutSequence this will be committed along with the current outgoing sequence number for bookkeeping
+	uint16_t WrittenInAckSeq;		// When we call CommitAndIncrementOutSequence this will be committed along with the current outgoing sequence number for bookkeeping
 
 	struct ring_buffer_t AckRecord;
 };
@@ -55,7 +50,3 @@ struct notification_header
 	size_t HistoryWordCount;
 	SequenceHistoryWord History[SequenceHistoryWordCount]; // typedef uint32 WordT;
 };
-
-#ifdef __cplusplus
-}
-#endif

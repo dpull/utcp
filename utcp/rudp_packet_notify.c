@@ -1,5 +1,6 @@
 ﻿#include "rudp_packet_notify.h"
 #include "bit_buffer.h"
+#include "rudp_bunch_data.h"
 #include "rudp_config.h"
 #include "rudp_def.h"
 #include "rudp_packet.h"
@@ -95,10 +96,32 @@ static void ReceivedNak(struct rudp_fd* fd, int32_t NakPacketId)
 	rudp_delivery_status(fd, NakPacketId, false);
 }
 
+//	/** return true if this is > Other, this is only considered to be the case if (A - B) < SeqNumberHalf since we have to be able to detect wraparounds */
+//bool operator>(const TSequenceNumber& Other) const
+//{
+//	return (Value != Other.Value) && (((Value - Other.Value) & SeqNumberMask) < SeqNumberHalf);
+//}
+//
+///** Check if this is >= Other, See above */
+//bool operator>=(const TSequenceNumber& Other) const
+//{
+//	return ((Value - Other.Value) & SeqNumberMask) < SeqNumberHalf;
+//}
+//
+//template <SIZE_T NumBits, typename SequenceType>
+//typename TSequenceNumber<NumBits, SequenceType>::DifferenceT TSequenceNumber<NumBits, SequenceType>::Diff(TSequenceNumber A, TSequenceNumber B)
+//{
+//	constexpr SIZE_T ShiftValue = sizeof(DifferenceT) * 8 - NumBits;
+//
+//	const SequenceT ValueA = A.Value;
+//	const SequenceT ValueB = B.Value;
+//
+//	return (DifferenceT)((ValueA - ValueB) << ShiftValue) >> ShiftValue;
+//};
+
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
-	if (notification_header->Seq > packet_notify->InSeq && notification_header->AckedSeq >= packet_notify->OutAckSeq &&
-		packet_notify->OutSeq > notification_header->AckedSeq)
+	if (notification_header->Seq > packet_notify->InSeq && notification_header->AckedSeq >= packet_notify->OutAckSeq && packet_notify->OutSeq > notification_header->AckedSeq)
 	{
 		return notification_header->Seq - packet_notify->InSeq;
 	}
@@ -276,8 +299,7 @@ bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbu
 {
 	// we always write at least 1 word
 	size_t CurrentHistoryWordCount =
-		ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u,
-			  SequenceHistoryWordCount);
+		ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u, SequenceHistoryWordCount);
 
 	// We can only do a refresh if we do not need more space for the history
 	if (bRefresh && (CurrentHistoryWordCount > packet_notify->WrittenHistoryWordCount))
