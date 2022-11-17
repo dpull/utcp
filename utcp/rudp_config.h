@@ -3,6 +3,8 @@
 #pragma once
 #include "bit_buffer.h"
 #include "rudp_def.h"
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 extern struct rudp_config* rudp_get_config();
@@ -79,5 +81,55 @@ static inline void rudp_delivery_status(struct rudp_fd* fd, int32_t packet_id, b
 	if (rudp_config->on_delivery_status)
 	{
 		rudp_config->on_delivery_status(fd, fd->userdata, packet_id, ack);
+	}
+}
+
+
+enum log_level
+{
+	/** Not used */
+	NoLogging = 0,
+
+	/** Always prints a fatal error to console (and log file) and crashes (even if logging is disabled) */
+	Fatal,
+
+	/**
+	 * Prints an error to console (and log file).
+	 * Commandlets and the editor collect and report errors. Error messages result in commandlet failure.
+	 */
+	Error,
+
+	/**
+	 * Prints a warning to console (and log file).
+	 * Commandlets and the editor collect and report warnings. Warnings can be treated as an error.
+	 */
+	Warning,
+
+	/** Prints a message to console (and log file) */
+	Display,
+
+	/** Prints a message to a log file (does not print to console) */
+	Log,
+
+	/**
+	 * Prints a verbose message to a log file (if Verbose logging is enabled for the given category,
+	 * usually used for detailed logging)
+	 */
+	Verbose,
+};
+
+static inline void rudp_log(enum log_level level, const char* fmt, ...)
+{
+	struct rudp_config* rudp_config = rudp_get_config();
+	if (rudp_config->on_log)
+	{
+		char log_buffer[16 * 1024];
+
+		va_list marker;
+		va_start(marker, fmt);
+		vsnprintf(log_buffer, sizeof(log_buffer), fmt, marker);
+		va_end(marker);
+		log_buffer[sizeof(log_buffer) - 1] = '\0';
+		rudp_config->on_log(level, log_buffer);
 	}
 }

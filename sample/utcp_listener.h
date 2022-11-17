@@ -34,7 +34,7 @@ class utcp_listener : public utcp_connection
 
 	virtual bool accept(utcp_connection* listener, bool reconnect) override DISABLE_FUNCTION;
 	virtual void raw_recv(utcp_packet_view* view) override DISABLE_FUNCTION;
-	virtual int send(char* bunch, int count) override DISABLE_FUNCTION;
+	virtual packet_id_range send(struct rudp_bunch* bunches[], int bunches_count) override DISABLE_FUNCTION;
 
   protected:
 	virtual void on_accept(bool reconnect) override;
@@ -54,4 +54,5 @@ class utcp_listener : public utcp_connection
 	std::vector<utcp_packet_view*> proc_queue;
 
 	std::unordered_map<struct sockaddr_in, utcp_connection*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
+	std::chrono::time_point<std::chrono::high_resolution_clock> now;
 };

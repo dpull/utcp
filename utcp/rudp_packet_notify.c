@@ -4,6 +4,7 @@
 #include "rudp_config.h"
 #include "rudp_def.h"
 #include "rudp_packet.h"
+#include "rudp_sequence_number.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,25 +18,13 @@ static inline size_t ClAMP(const size_t X, const size_t Min, const size_t Max)
 	return (X < Min) ? Min : (X < Max) ? X : Max;
 }
 
-#define SequenceNumberBits 14
-#define HistoryWordCountBits 4
-#define SeqMask ((1 << SequenceNumberBits) - 1)
-#define HistoryWordCountMask ((1 << HistoryWordCountBits) - 1)
-#define AckSeqShift HistoryWordCountBits
-#define SeqShift (AckSeqShift + SequenceNumberBits)
-
-static inline uint16_t PackedHeader_GetSeq(uint32_t Packed)
+enum
 {
-	return Packed >> SeqShift & SeqMask;
-}
-static inline uint16_t PackedHeader_GetAckedSeq(uint32_t Packed)
-{
-	return Packed >> AckSeqShift & SeqMask;
-}
-static inline size_t PackedHeader_GetHistoryWordCount(uint32_t Packed)
-{
-	return Packed & HistoryWordCountMask;
-}
+	HistoryWordCountBits = 4,
+	HistoryWordCountMask = ((1 << HistoryWordCountBits) - 1),
+	AckSeqShift = HistoryWordCountBits,
+	SeqShift = AckSeqShift + SequenceNumberBits,
+};
 
 static uint32_t PackedHeader_Pack(uint16_t Seq, uint16_t AckedSeq, size_t HistoryWordCount)
 {
@@ -46,6 +35,13 @@ static uint32_t PackedHeader_Pack(uint16_t Seq, uint16_t AckedSeq, size_t Histor
 	Packed |= HistoryWordCount & HistoryWordCountMask;
 
 	return Packed;
+}
+
+static void PackedHeader_UnPack(uint32_t Packed, uint16_t* Seq, uint16_t* AckedSeq, size_t* HistoryWordCount)
+{
+	*Seq = (Packed >> SeqShift & SeqNumberMask);
+	*AckedSeq = (Packed >> AckSeqShift & SeqNumberMask);
+	*HistoryWordCount = (Packed & HistoryWordCountMask);
 }
 
 // FNetPacketNotify::UpdateInAckSeqAck
@@ -96,34 +92,12 @@ static void ReceivedNak(struct rudp_fd* fd, int32_t NakPacketId)
 	rudp_delivery_status(fd, NakPacketId, false);
 }
 
-//	/** return true if this is > Other, this is only considered to be the case if (A - B) < SeqNumberHalf since we have to be able to detect wraparounds */
-//bool operator>(const TSequenceNumber& Other) const
-//{
-//	return (Value != Other.Value) && (((Value - Other.Value) & SeqNumberMask) < SeqNumberHalf);
-//}
-//
-///** Check if this is >= Other, See above */
-//bool operator>=(const TSequenceNumber& Other) const
-//{
-//	return ((Value - Other.Value) & SeqNumberMask) < SeqNumberHalf;
-//}
-//
-//template <SIZE_T NumBits, typename SequenceType>
-//typename TSequenceNumber<NumBits, SequenceType>::DifferenceT TSequenceNumber<NumBits, SequenceType>::Diff(TSequenceNumber A, TSequenceNumber B)
-//{
-//	constexpr SIZE_T ShiftValue = sizeof(DifferenceT) * 8 - NumBits;
-//
-//	const SequenceT ValueA = A.Value;
-//	const SequenceT ValueB = B.Value;
-//
-//	return (DifferenceT)((ValueA - ValueB) << ShiftValue) >> ShiftValue;
-//};
-
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
-	if (notification_header->Seq > packet_notify->InSeq && notification_header->AckedSeq >= packet_notify->OutAckSeq && packet_notify->OutSeq > notification_header->AckedSeq)
+	if (seq_num_greater_than(notification_header->Seq, packet_notify->InSeq) && seq_num_greater_equal(notification_header->AckedSeq, packet_notify->OutAckSeq) &&
+		seq_num_greater_than(packet_notify->OutSeq, notification_header->AckedSeq))
 	{
-		return notification_header->Seq - packet_notify->InSeq;
+		return seq_num_diff(notification_header->Seq, packet_notify->InSeq);
 	}
 	else
 	{
@@ -139,7 +113,7 @@ void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInS
 	packet_notify->InAckSeq = InitialInSeq;
 	packet_notify->InAckSeqAck = InitialInSeq;
 	packet_notify->OutSeq = InitialOutSeq;
-	packet_notify->OutAckSeq = InitialOutSeq - 1;
+	packet_notify->OutAckSeq = seq_num_init(InitialOutSeq - 1);
 
 	ring_buffer_init(&packet_notify->AckRecord);
 }
@@ -149,9 +123,9 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 {
 	assert(AckedSeq == packet_notify->InSeq);
 
-	while (AckedSeq > packet_notify->InAckSeq)
+	while (seq_num_greater_than(AckedSeq, packet_notify->InAckSeq))
 	{
-		++packet_notify->InAckSeq;
+		packet_notify->InAckSeq = seq_num_inc(packet_notify->InAckSeq, 1);
 
 		const bool bReportAcked = packet_notify->InAckSeq == AckedSeq ? IsAck : false;
 
@@ -178,7 +152,7 @@ void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool b
 	++fd->LastNotifiedPacketId;
 
 	// Sanity check
-	if ((fd->LastNotifiedPacketId & HistoryWordCountMask) != AckedSequence)
+	if (seq_num_init(fd->LastNotifiedPacketId) != AckedSequence)
 	{
 		// UE_LOG(LogNet, Warning, TEXT("LastNotifiedPacketId != AckedSequence"));
 
@@ -205,16 +179,16 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 	{
 		// ProcessReceivedAcks(NotificationData, InFunc);
 		// FNetPacketNotify::ProcessReceivedAcks
-		if (notification_header->AckedSeq > packet_notify->OutAckSeq)
+		if (seq_num_greater_than(notification_header->AckedSeq, packet_notify->OutAckSeq))
 		{
-			int32_t AckCount = notification_header->AckedSeq - packet_notify->OutAckSeq;
+			int32_t AckCount = seq_num_diff(notification_header->AckedSeq, packet_notify->OutAckSeq);
 
 			// Update InAckSeqAck used to track the needed number of bits to transmit our ack history
 			packet_notify->InAckSeqAck = UpdateInAckSeqAck(packet_notify, AckCount, notification_header->AckedSeq);
 
 			// ExpectedAck = OutAckSeq + 1
 			uint16_t CurrentAck = packet_notify->OutAckSeq;
-			++CurrentAck;
+			CurrentAck = seq_num_inc(CurrentAck, 1);
 
 			// Warn if the received sequence number is greater than our history buffer, since if that is the case we have to treat the data as lost.
 			if (AckCount > MaxSequenceHistoryLength)
@@ -223,34 +197,35 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 				UE_LOG_PACKET_NOTIFY_WARNING(TEXT("Notification::ProcessReceivedAcks - Missed Acks: AckedSeq: %u, OutAckSeq: %u, FirstMissingSeq: %u Count:
 				%u"), NotificationData.AckedSeq.Get(), OutAckSeq.Get(), CurrentAck.Get(), AckCount - (SequenceNumberT::DifferenceT)(SequenceHistoryT::Size));
 											 */
-				while (AckCount > MaxSequenceHistoryLength)
+			}
+
+			while (AckCount > MaxSequenceHistoryLength)
+			{
+				--AckCount;
+				HandlePacketNotification(fd, CurrentAck, false);
+				CurrentAck = seq_num_inc(CurrentAck, 1);
+			}
+
+			// For sequence numbers contained in the history we lookup the delivery status from the history
+			while (AckCount > 0)
+			{
+				--AckCount;
+
+				// TSequenceHistory<HistorySize>::IsDelivered
+				bool IsDelivered;
 				{
-					--AckCount;
-					HandlePacketNotification(fd, CurrentAck, false);
-					++CurrentAck;
+					assert(AckCount < MaxSequenceHistoryLength);
+
+					const size_t WordIndex = AckCount / SequenceHistoryBitsPerWord;
+					const SequenceHistoryWord WordMask = ((SequenceHistoryWord)(1) << (AckCount & (SequenceHistoryBitsPerWord - 1)));
+
+					IsDelivered = (packet_notify->InSeqHistory[WordIndex] & WordMask) != 0u;
 				}
 
-				// For sequence numbers contained in the history we lookup the delivery status from the history
-				while (AckCount > 0)
-				{
-					--AckCount;
-
-					// TSequenceHistory<HistorySize>::IsDelivered
-					bool IsDelivered;
-					{
-						assert(AckCount < MaxSequenceHistoryLength);
-
-						const size_t WordIndex = AckCount / SequenceHistoryBitsPerWord;
-						const SequenceHistoryWord WordMask = ((SequenceHistoryWord)(1) << (AckCount & (SequenceHistoryBitsPerWord - 1)));
-
-						IsDelivered = (packet_notify->InSeqHistory[WordIndex] & WordMask) != 0u;
-					}
-
-					// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(),
-					// NotificationData.History.IsDelivered(AckCount) ? 1u : 0u, AckCount);
-					HandlePacketNotification(fd, CurrentAck, IsDelivered);
-					++CurrentAck;
-				}
+				// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(),
+				// NotificationData.History.IsDelivered(AckCount) ? 1u : 0u, AckCount);
+				HandlePacketNotification(fd, CurrentAck, IsDelivered);
+				CurrentAck = seq_num_inc(CurrentAck, 1);
 			}
 		}
 
@@ -276,16 +251,16 @@ uint16_t packet_notify_CommitAndIncrementOutSeq(struct packet_notify* packet_not
 	AckData.OutSeq = packet_notify->OutSeq;
 	ring_buffer_queue(&packet_notify->AckRecord, AckData.Value);
 	packet_notify->WrittenHistoryWordCount = 0u;
-
-	return ++packet_notify->OutSeq;
+	packet_notify->OutSeq = seq_num_inc(packet_notify->OutSeq, 1);
+	return packet_notify->OutSeq;
 }
 
 // FNetPacketNotify::GetCurrentSequenceHistoryLength
 size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify* packet_notify)
 {
-	if (packet_notify->InAckSeq >= packet_notify->InAckSeqAck)
+	if (seq_num_greater_equal(packet_notify->InAckSeq, packet_notify->InAckSeqAck))
 	{
-		return packet_notify->InAckSeq - packet_notify->InAckSeqAck;
+		return seq_num_diff(packet_notify->InAckSeq, packet_notify->InAckSeqAck);
 	}
 	else
 	{
@@ -316,13 +291,16 @@ bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbu
 	uint32_t PackedHeader = PackedHeader_Pack(packet_notify->OutSeq, packet_notify->InAckSeq, packet_notify->WrittenHistoryWordCount - 1);
 
 	// Write packed header
-	bitbuf_write_bytes(bitbuf, &PackedHeader, sizeof(PackedHeader));
+	bitbuf_write_int_byte_order(bitbuf, PackedHeader);
 
 	// Write ack history
 	// TSequenceHistory<HistorySize>::Write
 	{
 		size_t NumWords = MIN(packet_notify->WrittenHistoryWordCount, SequenceHistoryWordCount);
-		bitbuf_write_bytes(bitbuf, &packet_notify->InSeqHistory, NumWords * sizeof(packet_notify->InSeqHistory[0]));
+		for (size_t i = 0; i < NumWords; ++i)
+		{
+			bitbuf_write_int_byte_order(bitbuf, packet_notify->InSeqHistory[i]);
+		}
 	}
 
 	// TODO log UE_LOG_PACKET_NOTIFY(TEXT("FNetPacketNotify::WriteHeader - Seq %u, AckedSeq %u bReFresh %u HistorySizeInWords %u"), Seq, AckedSeq, bRefresh ? 1u
@@ -336,20 +314,21 @@ int packet_notify_ReadHeader(struct rudp_fd* fd, struct bitbuf* bitbuf, struct n
 {
 	// Read packed header
 	uint32_t PackedHeader = 0;
-	if (!bitbuf_read_bytes(bitbuf, &PackedHeader, sizeof(PackedHeader)))
+	if (!bitbuf_read_int_byte_order(bitbuf, &PackedHeader))
 	{
 		return -2;
 	}
 
 	// unpack
-	notification_header->Seq = PackedHeader_GetSeq(PackedHeader);
-	notification_header->AckedSeq = PackedHeader_GetAckedSeq(PackedHeader);
-	notification_header->HistoryWordCount = PackedHeader_GetHistoryWordCount(PackedHeader) + 1;
+	PackedHeader_UnPack(PackedHeader, &notification_header->Seq, &notification_header->AckedSeq, &notification_header->HistoryWordCount);
+	notification_header->HistoryWordCount += 1;
 	notification_header->HistoryWordCount = MIN(_countof(notification_header->History), notification_header->HistoryWordCount);
 
-	if (!bitbuf_read_bytes(bitbuf, &notification_header->History, notification_header->HistoryWordCount * sizeof(notification_header->History[0])))
+	for (int i = 0; i < notification_header->HistoryWordCount; ++i)
 	{
-		return -3;
+		if (!bitbuf_read_int_byte_order(bitbuf, &notification_header->History[i]))
+			return -3;
 	}
+
 	return 0;
 }

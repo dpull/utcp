@@ -1,6 +1,7 @@
 #include "utcp_connection.h"
 #include <cassert>
 #include <cstring>
+#include <cstdio>
 
 #ifdef _MSC_VER
 struct WSAGuard
@@ -19,10 +20,25 @@ struct WSAGuard
 static WSAGuard _WSAGuard;
 #endif
 
-void log(int level, const char* msg)
+void log(const char* fmt, ...)
 {
-	printf(msg);
-	printf("\n");
+	static FILE* fd = nullptr;
+	if (!fd)
+	{
+		fd = fopen("sample_server.log", "a+");
+	}
+
+	va_list marker;
+	va_start(marker, fmt);
+	if (fd)
+	{
+		vfprintf(fd, fmt, marker);
+		fprintf(fd, "\n");
+		fflush(fd);
+	}
+	vfprintf(stdout, fmt, marker);
+	fprintf(stdout, "\n");
+	va_end(marker);
 }
 
 void utcp_connection::config_rudp()
@@ -48,7 +64,14 @@ void utcp_connection::config_rudp()
 		assert(&conn->rudp == fd);
 		static_cast<utcp_connection*>(userdata)->on_delivery_status(packet_id, ack);
 	};
-	config->on_log = [](int level, const char* msg) { log(level, msg); };
+	config->on_log = [](int level, const char* msg) { log(msg); };
+
+
+	config->enable_debug_cookie = true;
+	for (int i = 0; i < sizeof(config->debug_cookie); ++i)
+	{
+		config->debug_cookie[i] = i + 1;
+	}
 }
 
 utcp_connection::utcp_connection(bool is_client)
@@ -80,26 +103,36 @@ bool utcp_connection::accept(utcp_connection* listener, bool reconnect)
 	{
 		memcpy(rudp.AuthorisedCookie, listener->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie));
 		rudp_sequence_init(&rudp, listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
+		log("accept:(%d, %d)", listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
 	}
 	return true;
 }
 
+bool utcp_connection::match(utcp_connection* listener)
+{
+	return memcmp(rudp.AuthorisedCookie, listener->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie)) == 0;
+}
+
 void utcp_connection::tick()
 {
+	rudp_update(&rudp);
 	proc_ordered_cache(false);
 }
 
 void utcp_connection::after_tick()
 {
 	proc_ordered_cache(true);
+	rudp_flush(&rudp);
+	log("rudp_flush");
 }
 
 void utcp_connection::raw_recv(utcp_packet_view* view)
 {
-	auto packet_id = rudp_packet_peep_id(&rudp, view->data, view->data_len);
+	auto packet_id = rudp_peep_packet_id(&rudp, view->data, view->data_len);
 	if (packet_id <= 0)
 	{
-		rudp_incoming(&rudp, view->data, view->data_len);
+		dump("conn recv_hs", 0, view->data, view->data_len);
+		rudp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 		return;
 	}
@@ -111,10 +144,9 @@ void utcp_connection::raw_recv(utcp_packet_view* view)
 // > 0 packet id
 // = 0 send failed
 // < 0 tmp pocket id
-int utcp_connection::send(char* bunch, int count)
+packet_id_range utcp_connection::send(struct rudp_bunch* bunches[], int bunches_count)
 {
-	::sendto(socket_fd, bunch, count, 0, (struct sockaddr*)&dest_addr, dest_addr_len);
-	return 0;
+	return rudp_send(&rudp, bunches, bunches_count);
 }
 
 void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
@@ -124,28 +156,37 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 		int handle = -1;
 		if (!flushing_order_cache)
 		{
-			handle = 100;
+			handle = rudp_expect_packet_id(&rudp);
 		}
 
 		auto view = ordered_cache->pop(handle);
 		if (!view)
 			break;
 
-		// TODO
+		dump("conn recv", view->handle, view->data, view->data_len);
+		rudp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 	}
 }
 
 void utcp_connection::on_raw_send(const void* data, int len)
 {
+	dump("send", rudp.OutPacketId, data, len);
 	assert(dest_addr_len > 0);
 	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
 }
 
-void utcp_connection::on_recv(const struct rudp_bunch* bunches[], int count)
+void utcp_connection::dump(const char* type, int ext, const void* data, int len)
 {
-}
+	char str[16 * 1024];
+	int size = 0;
 
-void utcp_connection::on_delivery_status(int32_t packet_id, bool ack)
-{
+	for (int i = 0; i < len; ++i)
+	{
+		if (i != 0)
+			size += snprintf(str + size, sizeof(str) - size, ", ");
+		size += snprintf(str + size, sizeof(str) - size, "0x%hhX", ((const uint8_t*)data)[i]);
+	}
+
+	log("%s-%d\t%d\t{%s}", type, ext, len, str);
 }

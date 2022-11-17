@@ -131,10 +131,21 @@ static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 			rudp_bunch->ChSequence = fd->InPacketId;
 		}
 
+		// Ignore if reliable packet has already been processed.
+		if (rudp_bunch->bReliable && rudp_bunch->ChSequence <= fd->InReliable[rudp_bunch->ChIndex])
+		{
+			rudp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", rudp_bunch->ChIndex, fd->InReliable[rudp_bunch->ChIndex]);
+			continue;
+		}
+
 		if (rudp_bunch->bReliable && rudp_bunch->ChSequence != fd->InReliable[rudp_bunch->ChIndex] + 1)
 		{
+			// If this bunch has a dependency on a previous unreceived bunch, buffer it.
 			assert(!rudp_bunch->bOpen);
+			
+			// Verify that UConnection::ReceivedPacket has passed us a valid bunch.
 			assert(rudp_bunch->ChSequence > fd->InReliable[rudp_bunch->ChIndex]);
+
 			if (enqueue_incoming_data(&fd->rudp_bunch_data, rudp_bunch_node))
 				rudp_bunch_node = NULL;
 			break;
@@ -191,7 +202,6 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 	{
 		return -2;
 	}
-	assert(PacketJitterClockTimeMS == 1023);
 
 	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
 	if (PacketSequenceDelta <= 0)
@@ -243,6 +253,22 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 		packet_notify_AckSeq(&fd->packet_notify, fd->InPacketId, true);
 	}
 	return 0;
+}
+
+int PeekPacketId(struct rudp_fd* fd, struct bitbuf* bitbuf)
+{
+	struct notification_header notification_header;
+	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
+	if (ret)
+	{
+		return ret;
+	}
+	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
+	if (PacketSequenceDelta <= 0)
+	{
+		return -8;
+	}
+	return fd->InPacketId + PacketSequenceDelta;
 }
 
 // UNetConnection::GetFreeSendBufferBits
@@ -364,6 +390,8 @@ int32_t WriteBitsToSendBufferInternal(struct rudp_fd* fd, const uint8_t* Bits, c
 // UNetConnection::WriteFinalPacketInfo
 void WriteFinalPacketInfo(struct rudp_fd* fd, struct bitbuf* bitbuf)
 {
+	// Write Jitter clock time
+	// 暂时不移植这个功能了
 }
 
 bool check_can_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)

@@ -5,6 +5,8 @@
 
 int main(int argc, const char* argv[])
 {
+	log("server start");
+
 	utcp_connection::config_rudp();
 	std::unique_ptr<utcp_listener> listener(new utcp_listener);
 

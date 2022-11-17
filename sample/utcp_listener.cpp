@@ -1,4 +1,5 @@
 #include "utcp_listener.h"
+#include "ds_connection.h"
 #include <cassert>
 #include <cstring>
 
@@ -58,6 +59,7 @@ bool utcp_listener::listen(const char* ip, int port)
 	dest_addr_len = 0;
 
 	create_recv_thread();
+	now = std::chrono::high_resolution_clock::now();
 	return true;
 }
 
@@ -67,7 +69,7 @@ void utcp_listener::create_recv_thread()
 
 	recv_thread = new std::thread([this]() {
 		struct sockaddr_storage from_addr;
-		uint8_t buffer[MAX_PACKET_BUFFER_SIZE];
+		uint8_t buffer[MaxPacket * 2];
 
 		while (!this->recv_thread_exit_flag)
 		{
@@ -115,6 +117,8 @@ void utcp_listener::proc_recv_queue()
 
 		if (sockaddr2str((sockaddr_in*)&view->from_addr, ipstr, sizeof(ipstr)))
 		{
+			dump("listener recv", 0, view->data, view->data_len);
+
 			dest_addr_len = view->from_addr_len;
 			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
 			rudp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
@@ -127,8 +131,14 @@ void utcp_listener::proc_recv_queue()
 
 void utcp_listener::tick()
 {
+	auto cur_now = std::chrono::high_resolution_clock::now();
+	rudp_add_time((cur_now - now).count());
+	now = cur_now;
+
+	rudp_update(&rudp);
+
 	proc_recv_queue();
-	for (auto it : clients)
+	for (auto& it : clients)
 	{
 		it.second->tick();
 	}
@@ -137,7 +147,7 @@ void utcp_listener::tick()
 void utcp_listener::after_tick()
 {
 	proc_recv_queue();
-	for (auto it : clients)
+	for (auto& it : clients)
 	{
 		it.second->after_tick();
 	}
@@ -148,18 +158,19 @@ void utcp_listener::on_accept(bool reconnect)
 	utcp_connection* conn = nullptr;
 	if (!reconnect)
 	{
-		conn = new utcp_connection(false);
+		conn = new ds_connection();
 	}
 	else
 	{
-		auto it = clients.find(*(sockaddr_in*)&dest_addr);
-		if (it == clients.end())
+		for (auto it = clients.begin(); it != clients.end(); ++it)
 		{
-			assert(false);
-			return;
+			if (it->second->match(this))
+			{
+				conn = it->second;
+				clients.erase(it);
+				break;
+			}
 		}
-		conn = it->second;
-		clients.erase(it);
 	}
 
 	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&dest_addr, conn));

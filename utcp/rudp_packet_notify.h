@@ -14,3 +14,4 @@ int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_no
 void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck);
 bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbuf* bitbuf, bool bRefresh);
 void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool bDelivered);
+uint16_t packet_notify_CommitAndIncrementOutSeq(struct packet_notify* packet_notify);

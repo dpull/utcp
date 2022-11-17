@@ -13,6 +13,8 @@ struct bitbuf
 	size_t num;
 };
 
+// TODO: bitbuf_write_int_byte_order & bitbuf_read_int_byte_order 大小端问题
+
 size_t bitbuf_num_bytes(struct bitbuf* buff);
 size_t bitbuf_left_bits(struct bitbuf* buff);
 size_t bitbuf_left_bytes(struct bitbuf* buff);
@@ -26,6 +28,7 @@ bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size);
 bool bitbuf_write_int(struct bitbuf* buff, uint32_t value, uint32_t value_max);
 bool bitbuf_write_int_packed(struct bitbuf* buff, uint32_t value);
 bool bitbuf_write_int_wrapped(struct bitbuf* buff, uint32_t value, uint32_t value_max);
+bool bitbuf_write_int_byte_order(struct bitbuf* buff, uint32_t value);
 
 bool bitbuf_read_init(struct bitbuf* buff, const uint8_t* data, size_t len);
 bool bitbuf_read_bit(struct bitbuf* buff, uint8_t* value);
@@ -33,3 +36,4 @@ bool bitbuf_read_bits(struct bitbuf* buff, void* buffer, size_t bits_size);
 bool bitbuf_read_bytes(struct bitbuf* buff, void* buffer, size_t size);
 bool bitbuf_read_int(struct bitbuf* buff, uint32_t* value, uint32_t value_max);
 bool bitbuf_read_int_packed(struct bitbuf* buff, uint32_t* value);
+bool bitbuf_read_int_byte_order(struct bitbuf* buff, uint32_t* value);

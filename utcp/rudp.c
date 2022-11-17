@@ -4,6 +4,8 @@
 #include "rudp_config.h"
 #include "rudp_handshake.h"
 #include "rudp_packet.h"
+#include "rudp_sequence_number.h"
+#include "rudp_packet_notify.h"
 #include <assert.h>
 #include <string.h>
 
@@ -92,13 +94,13 @@ void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t Ou
 		fd->InReliable[i] = fd->InitInReliable;
 		fd->OutReliable[i] = fd->InitOutReliable;
 	}
-	packet_notify_Init(&fd->packet_notify, fd->InPacketId, fd->OutPacketId);
+	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
 }
 
 // ReceivedRawPacket
 // PacketHandler
 // StatelessConnectHandlerComponent::Incoming
-int rudp_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
+int rudp_ordered_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -120,15 +122,7 @@ int rudp_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 
 	// TODO PacketHandler::ReplaceIncomingPacket
 	// 这儿应当直接size-1就可以, 但先参考unreal的做法
-	size_t left_bytes = bitbuf_left_bytes(&bitbuf);
-	char replace_buffer[1600]; // tmp code
-
-	bitbuf_read_bits(&bitbuf, replace_buffer, left_bits);
-	if (!bitbuf_read_init(&bitbuf, replace_buffer, left_bytes))
-	{
-		return -3;
-	}
-
+	bitbuf.size--;
 	ret = ReceivedPacket(fd, &bitbuf);
 	if (ret != 0)
 	{
@@ -137,7 +131,7 @@ int rudp_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 
 	left_bits = bitbuf_left_bits(&bitbuf);
 	assert(left_bits == 0);
-	return left_bits != 0;
+	return left_bits;
 }
 
 int rudp_update(struct rudp_fd* fd)
@@ -179,7 +173,7 @@ int rudp_update(struct rudp_fd* fd)
 	return 0;
 }
 
-int32_t rudp_packet_peep_id(struct rudp_fd* fd, uint8_t* buffer, int len)
+int32_t rudp_peep_packet_id(struct rudp_fd* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -190,19 +184,15 @@ int32_t rudp_packet_peep_id(struct rudp_fd* fd, uint8_t* buffer, int len)
 	if (!bitbuf_read_bit(&bitbuf, &bHandshakePacket))
 		return -1;
 
-	if (!bHandshakePacket)
+	if (bHandshakePacket)
 		return 0;
 
-	// Read packed header
-	uint32_t PackedHeader = 0;
-	if (!bitbuf_read_bytes(&bitbuf, &PackedHeader, sizeof(PackedHeader)))
-	{
-		return -2;
-	}
+	return PeekPacketId(fd, &bitbuf);
+}
 
-	// unpack
-	// notification_header->Seq = PackedHeader_GetSeq(PackedHeader);
-	return 0;
+int32_t rudp_expect_packet_id(struct rudp_fd* fd)
+{
+	return fd->InPacketId + 1;
 }
 
 struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
@@ -224,6 +214,7 @@ struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[
 	return PacketIdRange;
 }
 
+// UNetConnection::FlushNet
 int rudp_flush(struct rudp_fd* fd)
 {
 	int64_t now = rudp_gettime_ms();
@@ -246,10 +237,15 @@ int rudp_flush(struct rudp_fd* fd)
 	WritePacketHeader(fd, &bitbuf);
 	WriteFinalPacketInfo(fd, &bitbuf);
 
-	CapHandshakePacket(fd, &bitbuf);
+	bitbuf_write_end(&bitbuf);
 	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;
+
+	packet_notify_CommitAndIncrementOutSeq(&fd->packet_notify);
+	fd->LastSendTime = now;
+	fd->OutPacketId++;
+
 	return 0;
 }

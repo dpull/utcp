@@ -300,6 +300,11 @@ bool bitbuf_write_int_wrapped(struct bitbuf* buff, uint32_t value, uint32_t valu
 	return true;
 }
 
+bool bitbuf_write_int_byte_order(struct bitbuf* buff, uint32_t value)
+{
+	return bitbuf_write_bytes(buff, &value, sizeof(value));
+}
+
 bool bitbuf_read_init(struct bitbuf* buff, const uint8_t* data, size_t len)
 {
 	if (len == 0)
@@ -421,4 +426,9 @@ bool bitbuf_read_int_packed(struct bitbuf* buff, uint32_t* value)
 
 	*value = Value;
 	return true;
+}
+
+bool bitbuf_read_int_byte_order(struct bitbuf* buff, uint32_t* value)
+{
+	return bitbuf_read_bytes(buff, value, sizeof(*value));
 }

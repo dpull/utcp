@@ -264,9 +264,11 @@ int remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packe
 	while (dl_list_node != &rudp_bunch_data->OutRec)
 	{
 		struct rudp_bunch_node* cur_rudp_bunch_node = CONTAINING_RECORD(dl_list_node, struct rudp_bunch_node, dl_list_node);
+		dl_list_node = dl_list_node->next;
+
 		if (packet_id == cur_rudp_bunch_node->packet_id)
 		{
-			dl_list_erase(dl_list_node);
+			dl_list_erase(&cur_rudp_bunch_node->dl_list_node);
 			rudp_bunch_data->NumOutRec--;
 
 			assert(count < bunch_node_size);
@@ -277,7 +279,6 @@ int remove_outcoming_data(struct rudp_bunch_data* rudp_bunch_data, int32_t packe
 		{
 			break;
 		}
-		dl_list_node = dl_list_node->next;
 	}
 	return count;
 }

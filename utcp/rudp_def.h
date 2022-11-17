@@ -32,8 +32,6 @@ extern "C" {
 
 #define RELIABLE_BUFFER 256
 
-#define MAX_PACKETID (1 << 14)
-
 enum
 {
 	PACKET_ID_INDEX_NONE = -1

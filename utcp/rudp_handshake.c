@@ -2,9 +2,15 @@
 #include "bit_buffer.h"
 #include "rudp.h"
 #include "rudp_config.h"
+#include "rudp_sequence_number.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum 
+{
+	MAX_PACKETID = SeqNumberCount,
+};
 
 static inline int32_t GetAdjustedSizeBits(struct rudp_fd* fd, int32_t InSizeBits)
 { // return MagicHeader.Num() + InSizeBits;
@@ -222,7 +228,7 @@ int IncomingConnectionless(struct rudp_fd* fd, const char* address, struct bitbu
 	if (!bHandshakePacket)
 	{
 		SendRestartHandshakeRequest(fd);
-		return 0;
+		return -3;
 	}
 
 	uint8_t bRestartHandshake = false;

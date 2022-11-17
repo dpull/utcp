@@ -11,8 +11,7 @@
 		throw;                                                                                                                                                                     \
 	}
 
-constexpr int MAX_PACKET_BUFFER_SIZE = 1800;
-void log(int level, const char* msg);
+void log(const char* fmt, ...);
 
 struct utcp_packet_view
 {
@@ -22,7 +21,7 @@ struct utcp_packet_view
 	uint32_t handle;
 
 	uint16_t data_len;
-	uint8_t data[MAX_PACKET_BUFFER_SIZE];
+	uint8_t data[MaxPacket];
 
 	bool operator()(const utcp_packet_view* l, const utcp_packet_view* r) const
 	{
@@ -60,18 +59,20 @@ class utcp_connection
 	~utcp_connection();
 
 	virtual bool accept(utcp_connection* listener, bool reconnect);
+	virtual bool match(utcp_connection* listener);
 
 	virtual void tick();
 	virtual void after_tick();
 
 	virtual void raw_recv(utcp_packet_view* view);
-	virtual int send(char* bunch, int count);
+	virtual packet_id_range send(struct rudp_bunch* bunches[], int bunches_count);
 
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;
 	virtual void on_raw_send(const void* data, int len);
-	virtual void on_recv(const struct rudp_bunch* bunches[], int count);
-	virtual void on_delivery_status(int32_t packet_id, bool ack);
+	virtual void on_recv(const struct rudp_bunch* bunches[], int count) DISABLE_FUNCTION;
+	virtual void on_delivery_status(int32_t packet_id, bool ack) DISABLE_FUNCTION;
+	void dump(const char* type, int ext, const void* data, int len);
 
   private:
 	void proc_ordered_cache(bool flushing_order_cache);
