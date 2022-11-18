@@ -21,7 +21,7 @@ struct utcp_packet_view
 	uint32_t handle;
 
 	uint16_t data_len;
-	uint8_t data[MaxPacket];
+	uint8_t data[UTCP_MAX_PACKET];
 
 	bool operator()(const utcp_packet_view* l, const utcp_packet_view* r) const
 	{
@@ -56,10 +56,10 @@ class utcp_connection
 	static void config_utcp();
 
 	utcp_connection(bool is_client);
-	~utcp_connection();
+	virtual ~utcp_connection();
 
 	virtual bool accept(utcp_connection* listener, bool reconnect);
-	virtual bool match(utcp_connection* listener);
+	virtual bool is_cookie_equal(utcp_connection* listener);
 
 	virtual void tick();
 	virtual void after_tick();

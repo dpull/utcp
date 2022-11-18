@@ -24,7 +24,7 @@ TEST(bunch, read_write)
 	utcp_bunch1.bPartialInitial = 0;
 	utcp_bunch1.bPartialFinal = 0;
 
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf1;
 
 	ASSERT_TRUE(bitbuf_write_init(&bitbuf1, buffer, sizeof(buffer)));

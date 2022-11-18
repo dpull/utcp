@@ -113,7 +113,7 @@ bool utcp_connection::accept(utcp_connection* listener, bool reconnect)
 	return true;
 }
 
-bool utcp_connection::match(utcp_connection* listener)
+bool utcp_connection::is_cookie_equal(utcp_connection* listener)
 {
 	return memcmp(rudp.AuthorisedCookie, listener->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie)) == 0;
 }

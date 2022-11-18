@@ -66,7 +66,7 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 	if (utcp_bunch->bReliable)
 	{
 		uint32_t ChSequence = 0;
-		if (!bitbuf_read_int(bitbuf, (uint32_t*)&utcp_bunch->ChSequence, MAX_CHSEQUENCE))
+		if (!bitbuf_read_int(bitbuf, (uint32_t*)&utcp_bunch->ChSequence, UTCP_MAX_CHSEQUENCE))
 		{
 			return false;
 		}
@@ -98,7 +98,7 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 	}
 
 	uint32_t BunchDataBits;
-	if (!bitbuf_read_int(bitbuf, &BunchDataBits, MaxPacket * 8))
+	if (!bitbuf_read_int(bitbuf, &BunchDataBits, UTCP_MAX_PACKET * 8))
 		return false;
 	utcp_bunch->DataBitsLen = BunchDataBits;
 	if (!bitbuf_read_bits(bitbuf, utcp_bunch->Data, utcp_bunch->DataBitsLen))
@@ -137,7 +137,7 @@ bool utcp_bunch_write_header(const struct utcp_bunch* utcp_bunch, struct bitbuf*
 
 	if (utcp_bunch->bReliable)
 	{
-		if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->ChSequence, MAX_CHSEQUENCE))
+		if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->ChSequence, UTCP_MAX_CHSEQUENCE))
 			return false;
 	}
 
@@ -154,7 +154,7 @@ bool utcp_bunch_write_header(const struct utcp_bunch* utcp_bunch, struct bitbuf*
 			return false;
 	}
 
-	if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->DataBitsLen, MaxPacket * 8))
+	if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->DataBitsLen, UTCP_MAX_PACKET * 8))
 		return false;
 	return true;
 }

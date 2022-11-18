@@ -78,6 +78,7 @@ int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const 
 	return 0;
 }
 
+// UNetConnection::InitSequence
 void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
 {
 	fd->InPacketId = IncomingSequence - 1;
@@ -86,8 +87,8 @@ void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t Ou
 	fd->LastNotifiedPacketId = fd->OutAckPacketId;
 
 	// Initialize the reliable packet sequence (more useful/effective at preventing attacks)
-	fd->InitInReliable = IncomingSequence & (MAX_CHSEQUENCE - 1);
-	fd->InitOutReliable = OutgoingSequence & (MAX_CHSEQUENCE - 1);
+	fd->InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 
 	for (int i = 0; i < DEFAULT_MAX_CHANNEL_SIZE; ++i)
 	{

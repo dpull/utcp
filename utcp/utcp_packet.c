@@ -18,7 +18,7 @@ enum
 	MAX_PACKET_HEADER_BITS = MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS + MAX_PACKET_INFO_HEADER_BITS,
 	MAX_BUNCH_HEADER_BITS = 256,
 	MaxPacketHandlerBits = 2,
-	MAX_SINGLE_BUNCH_SIZE_BITS = (MaxPacket * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
+	MAX_SINGLE_BUNCH_SIZE_BITS = (UTCP_MAX_PACKET * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
 };
 
 static void check_bit(struct bitbuf* bitbuf, uint8_t exp)
@@ -122,7 +122,7 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		ChIndex = utcp_bunch->ChIndex;
 		if (utcp_bunch->bReliable)
 		{
-			utcp_bunch->ChSequence = MakeRelative(utcp_bunch->ChSequence, fd->InReliable[ChIndex], MAX_CHSEQUENCE);
+			utcp_bunch->ChSequence = MakeRelative(utcp_bunch->ChSequence, fd->InReliable[ChIndex], UTCP_MAX_CHSEQUENCE);
 		}
 		else if (utcp_bunch->bPartial)
 		{
@@ -277,7 +277,7 @@ int64_t GetFreeSendBufferBits(struct utcp_fd* fd)
 	// Otherwise, we only need to account for trailer size
 	const int32_t ExtraBits = (fd->SendBufferBitsNum > 0) ? MAX_PACKET_TRAILER_BITS : MAX_PACKET_HEADER_BITS + MAX_PACKET_TRAILER_BITS;
 
-	const int32_t NumberOfFreeBits = MaxPacket * 8 - (int32_t)(fd->SendBufferBitsNum + ExtraBits);
+	const int32_t NumberOfFreeBits = UTCP_MAX_PACKET * 8 - (int32_t)(fd->SendBufferBitsNum + ExtraBits);
 
 	assert(NumberOfFreeBits >= 0);
 
@@ -427,7 +427,7 @@ bool check_can_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunche
 		}
 	}
 
-	const bool bOverflowsReliable = (fd->utcp_bunch_data.NumOutRec + bunches_count >= RELIABLE_BUFFER);
+	const bool bOverflowsReliable = (fd->utcp_bunch_data.NumOutRec + bunches_count >= UTCP_RELIABLE_BUFFER);
 	if (bOverflowsReliable)
 		return false;
 	return true;
@@ -441,7 +441,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 	if (bunch->bReliable)
 		bunch->ChSequence = ++fd->OutReliable[bunch->ChIndex];
 
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 	{
@@ -477,7 +477,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 
 		utcp_bunch_node->packet_id = PacketId;
 		utcp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
-		add_outcome_data(&fd->utcp_bunch_data, utcp_bunch_node);
+		add_ougoing_data(&fd->utcp_bunch_data, utcp_bunch_node);
 	}
 
 	return PacketId;

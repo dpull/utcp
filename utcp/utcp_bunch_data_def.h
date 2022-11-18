@@ -26,6 +26,8 @@ That leaves 1472 bytes (ipv4) or 1452 (ipv6) for your data.
 */
 #define UDP_MTU_SIZE (1452)
 #define BUNCH_NODE_CACHE_MAX_SIZE (1024)
+#define UTCP_MAX_PACKET 1024
+
 
 struct utcp_bunch
 {

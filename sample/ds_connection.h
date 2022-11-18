@@ -84,6 +84,6 @@ class ds_connection : public utcp_connection
 
   private:
 	std::string challenge;
-	uint8_t send_buffer[MaxPacket];
+	uint8_t send_buffer[UTCP_MAX_PACKET];
 	encode coder;
 };

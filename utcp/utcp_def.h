@@ -16,7 +16,6 @@ extern "C" {
 #define HANDSHAKE_PACKET_SIZE_BITS 227
 #define RESTART_HANDSHAKE_PACKET_SIZE_BITS 2
 #define RESTART_RESPONSE_SIZE_BITS 387
-#define MaxPacket 1024
 
 #define SECRET_BYTE_SIZE 64
 #define SECRET_COUNT 2
@@ -31,11 +30,9 @@ extern "C" {
 // The minimum amount of possible time a cookie may exist (for calculating when the clientside should timeout a challenge response)
 #define MIN_COOKIE_LIFETIME SECRET_UPDATE_TIME
 
-#define RELIABLE_BUFFER 256
-
 enum
 {
-	PACKET_ID_INDEX_NONE = -1
+	PACKET_ID_INDEX_NONE = -1,
 };
 
 struct packet_id_range
@@ -130,7 +127,7 @@ struct utcp_fd
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
 	uint32_t HasDirtyAcks;
 
-	uint8_t SendBuffer[MaxPacket + 32 /*MagicHeader*/ + 1 /*EndBits*/];
+	uint8_t SendBuffer[UTCP_MAX_PACKET + 32 /*MagicHeader*/ + 1 /*EndBits*/];
 	size_t SendBufferBitsNum;
 
 	int64_t LastSendTime; // Last time a packet was sent, for keepalives.

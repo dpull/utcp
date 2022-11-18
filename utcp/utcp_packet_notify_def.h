@@ -7,12 +7,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MAX_CHSEQUENCE 1024
-#define MaxSequenceHistoryLength 256
 typedef uint32_t SequenceHistoryWord;
-#define SequenceHistoryBitsPerWord (sizeof(SequenceHistoryWord) * 8)
-#define SequenceHistoryWordCount (MaxSequenceHistoryLength / SequenceHistoryBitsPerWord)
-#define DEFAULT_MAX_CHANNEL_SIZE 32767
+enum
+{
+	UTCP_RELIABLE_BUFFER = 256, // Power of 2 >= 1.
+	UTCP_MAX_CHSEQUENCE = 1024,  // Power of 2 >RELIABLE_BUFFER, covering loss/misorder time.
+	MaxSequenceHistoryLength = 256,
+	SequenceHistoryBitsPerWord = (sizeof(SequenceHistoryWord) * 8),
+	SequenceHistoryWordCount = (MaxSequenceHistoryLength / SequenceHistoryBitsPerWord),
+	DEFAULT_MAX_CHANNEL_SIZE = 32767,
+};
 
 union sent_ack_data {
 	struct

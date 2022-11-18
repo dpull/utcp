@@ -71,7 +71,7 @@ void NotifyHandshakeBegin(struct utcp_fd* fd)
 		return;
 
 	// GetAdjustedSizeBits(fd, HANDSHAKE_PACKET_SIZE_BITS) + 1
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;
@@ -143,7 +143,7 @@ static bool ParseHandshakePacket(struct utcp_fd* fd, struct bitbuf* bitbuf, uint
 static void SendConnectChallenge(struct utcp_fd* fd, const char* address)
 {
 	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;
@@ -172,7 +172,7 @@ static void SendConnectChallenge(struct utcp_fd* fd, const char* address)
 static void SendRestartHandshakeRequest(struct utcp_fd* fd)
 {
 	// GetAdjustedSizeBits(RESTART_HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;
@@ -194,7 +194,7 @@ static void SendRestartHandshakeRequest(struct utcp_fd* fd)
 static void SendChallengeAck(struct utcp_fd* fd, uint8_t InCookie[COOKIE_BYTE_SIZE])
 {
 	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;
@@ -304,7 +304,7 @@ void SendChallengeResponse(struct utcp_fd* fd, uint8_t InSecretId, double InTime
 	// int32_t RestartHandshakeResponseSize = RESTART_RESPONSE_SIZE_BITS;
 	// const int32 BaseSize = GetAdjustedSizeBits(fd->bRestartedHandshake ? RestartHandshakeResponseSize : HANDSHAKE_PACKET_SIZE_BITS);
 	// BaseSize + 1 /* Termination bit */
-	uint8_t buffer[MaxPacket];
+	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;

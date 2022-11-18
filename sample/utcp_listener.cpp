@@ -76,7 +76,7 @@ void utcp_listener::create_recv_thread()
 
 	recv_thread = new std::thread([this]() {
 		struct sockaddr_storage from_addr;
-		uint8_t buffer[MaxPacket * 2];
+		uint8_t buffer[UTCP_MAX_PACKET * 2];
 
 		while (!this->recv_thread_exit_flag)
 		{
@@ -171,7 +171,7 @@ void utcp_listener::on_accept(bool reconnect)
 	{
 		for (auto it = clients.begin(); it != clients.end(); ++it)
 		{
-			if (it->second->match(this))
+			if (it->second->is_cookie_equal(this))
 			{
 				conn = it->second;
 				clients.erase(it);
