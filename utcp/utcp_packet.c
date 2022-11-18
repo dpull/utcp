@@ -392,47 +392,6 @@ void WriteFinalPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 	// 暂时不移植这个功能了
 }
 
-bool check_can_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
-{
-	for (int i = 0; i < bunches_count; ++i)
-	{
-		if (!bunches[i]->DataBitsLen > MAX_SINGLE_BUNCH_SIZE_BITS)
-			return false;
-
-		if (bunches_count == 1)
-		{
-			if (bunches[i]->bPartial)
-				return false;
-		}
-		else
-		{
-			if (!bunches[i]->bPartial)
-				return false;
-
-			if (i == 0)
-			{
-				if (!bunches[i]->bPartialInitial)
-					return false;
-			}
-			else if (i == bunches_count - 1)
-			{
-				if (!bunches[i]->bPartialFinal)
-					return false;
-			}
-			else
-			{
-				if (bunches[i]->bPartialInitial || bunches[i]->bPartialFinal)
-					return false;
-			}
-		}
-	}
-
-	const bool bOverflowsReliable = (fd->utcp_bunch_data.NumOutRec + bunches_count >= UTCP_RELIABLE_BUFFER);
-	if (bOverflowsReliable)
-		return false;
-	return true;
-}
-
 // UNetConnection::SendRawBunch
 int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {

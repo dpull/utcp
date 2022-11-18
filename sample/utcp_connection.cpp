@@ -149,9 +149,9 @@ void utcp_connection::raw_recv(utcp_packet_view* view)
 // > 0 packet id
 // = 0 send failed
 // < 0 tmp pocket id
-packet_id_range utcp_connection::send(struct utcp_bunch* bunches[], int bunches_count)
+int utcp_connection::send(struct utcp_bunch* bunch)
 {
-	return utcp_send(&rudp, bunches, bunches_count);
+	return utcp_send_bunch(&rudp, bunch);
 }
 
 void utcp_connection::proc_ordered_cache(bool flushing_order_cache)

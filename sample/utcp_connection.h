@@ -65,7 +65,7 @@ class utcp_connection
 	virtual void after_tick();
 
 	virtual void raw_recv(utcp_packet_view* view);
-	virtual packet_id_range send(struct utcp_bunch* bunches[], int bunches_count);
+	virtual int send(struct utcp_bunch* bunch);
 
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;

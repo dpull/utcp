@@ -34,7 +34,7 @@ class utcp_listener : public utcp_connection
 
 	virtual bool accept(utcp_connection* listener, bool reconnect) override DISABLE_FUNCTION;
 	virtual void raw_recv(utcp_packet_view* view) override DISABLE_FUNCTION;
-	virtual packet_id_range send(struct utcp_bunch* bunches[], int bunches_count) override DISABLE_FUNCTION;
+	virtual int send(struct utcp_bunch* bunch) override DISABLE_FUNCTION;
 
   protected:
 	virtual void on_accept(bool reconnect) override;

@@ -194,28 +194,9 @@ int32_t utcp_expect_packet_id(struct utcp_fd* fd)
 	return fd->InPacketId + 1;
 }
 
-struct packet_id_range utcp_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
+int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
-	struct packet_id_range PacketIdRange = {PACKET_ID_INDEX_NONE, PACKET_ID_INDEX_NONE};
-	if (!check_can_send(fd, bunches, bunches_count))
-		return PacketIdRange;
-
-	for (int i = 0; i < bunches_count; ++i)
-	{
-		int32_t PacketId = SendRawBunch(fd, bunches[i]);
-		assert(PacketId >= 0);
-		if (i == 0)
-		{
-			PacketIdRange.First = PacketId;
-			PacketIdRange.Last = PacketId;
-		}
-		else
-		{
-			PacketIdRange.Last = PacketId;
-		}
-	}
-
-	return PacketIdRange;
+	return SendRawBunch(fd, bunch); 
 }
 
 // UNetConnection::FlushNet

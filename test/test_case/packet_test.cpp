@@ -96,7 +96,6 @@ TEST_F(packet, accept_hello_login)
 	utcp_sequence_init(fd.get(), 1027, 513);
 
 	struct utcp_bunch bunch;
-	struct utcp_bunch* bunches[] = {&bunch};
 	memset(&bunch, 0, sizeof(bunch));
 	bunch.NameIndex = 255;
 	bunch.ChIndex = 0;
@@ -107,8 +106,8 @@ TEST_F(packet, accept_hello_login)
 
 	bunch.DataBitsLen = sizeof(packet_challenge) * 8;
 	memcpy(bunch.Data, packet_challenge, sizeof(packet_challenge));
-	auto ret = utcp_send(fd.get(), bunches, 1);
-	ASSERT_NE(ret.First, -1);
+	auto ret = utcp_send_bunch(fd.get(), &bunch);
+	ASSERT_NE(ret, -1);
 
 	utcp_flush(fd.get());
 
@@ -117,8 +116,8 @@ TEST_F(packet, accept_hello_login)
 
 	bunch.DataBitsLen = sizeof(packet_welcome) * 8;
 	memcpy(bunch.Data, packet_welcome, sizeof(packet_welcome));
-	ret = utcp_send(fd.get(), bunches, 1);
-	ASSERT_NE(ret.First, -1);
+	ret = utcp_send_bunch(fd.get(), &bunch);
+	ASSERT_NE(ret, -1);
 
 	utcp_flush(fd.get());
 }

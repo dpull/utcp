@@ -23,7 +23,8 @@ int utcp_update(struct utcp_fd* fd);
 int32_t utcp_peep_packet_id(struct utcp_fd* fd, uint8_t* buffer, int len);
 int32_t utcp_expect_packet_id(struct utcp_fd* fd);
 
-struct packet_id_range utcp_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count);
+int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch);
+struct packet_id_range utcp_send_bunches(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count);
 int utcp_flush(struct utcp_fd* fd);
 
 #ifdef __cplusplus

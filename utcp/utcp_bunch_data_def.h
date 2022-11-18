@@ -31,8 +31,9 @@ That leaves 1472 bytes (ipv4) or 1452 (ipv6) for your data.
 
 struct utcp_bunch
 {
+	int32_t ChSequence; // 内部赋值
+
 	uint32_t NameIndex;
-	int32_t ChSequence;
 	uint16_t ChIndex;
 	uint16_t DataBitsLen;
 

@@ -58,9 +58,8 @@ void ds_connection::send_data()
 	bunch.DataBitsLen = len * 8;
 	memcpy(bunch.Data, send_buffer, len);
 
-	struct utcp_bunch* bunches[] = {&bunch};
-	auto ret = send(bunches, 1);
-	log("send bunch [%d, %d]\n", ret.First, ret.Last);
+	auto ret = send(&bunch);
+	log("send bunch %d\n", ret);
 }
 
 // DEFINE_CONTROL_CHANNEL_MESSAGE(Hello, 0, uint8, uint32, FString); // initial client connection message
