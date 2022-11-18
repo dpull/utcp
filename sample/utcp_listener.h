@@ -34,12 +34,12 @@ class utcp_listener : public utcp_connection
 
 	virtual bool accept(utcp_connection* listener, bool reconnect) override DISABLE_FUNCTION;
 	virtual void raw_recv(utcp_packet_view* view) override DISABLE_FUNCTION;
-	virtual packet_id_range send(struct rudp_bunch* bunches[], int bunches_count) override DISABLE_FUNCTION;
+	virtual packet_id_range send(struct utcp_bunch* bunches[], int bunches_count) override DISABLE_FUNCTION;
 
   protected:
 	virtual void on_accept(bool reconnect) override;
 
-	virtual void on_recv(const struct rudp_bunch* bunches[], int count) override DISABLE_FUNCTION;
+	virtual void on_recv(const struct utcp_bunch* bunches[], int count) override DISABLE_FUNCTION;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) override DISABLE_FUNCTION;
 
 	void create_recv_thread();

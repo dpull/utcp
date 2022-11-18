@@ -1,7 +1,7 @@
 #include "utcp_connection.h"
 #include <cassert>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
 
 #ifdef _MSC_VER
 struct WSAGuard
@@ -43,29 +43,28 @@ void log(const char* fmt, ...)
 
 void utcp_connection::config_rudp()
 {
-	auto config = rudp_get_config();
-	config->on_accept = [](struct rudp_fd* fd, void* userdata, bool reconnect) {
+	auto config = utcp_get_config();
+	config->on_accept = [](struct utcp_fd* fd, void* userdata, bool reconnect) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
 		static_cast<utcp_connection*>(userdata)->on_accept(reconnect);
 	};
-	config->on_raw_send = [](struct rudp_fd* fd, void* userdata, const void* data, int len) {
+	config->on_raw_send = [](struct utcp_fd* fd, void* userdata, const void* data, int len) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
 		static_cast<utcp_connection*>(userdata)->on_raw_send(data, len);
 	};
-	config->on_recv = [](struct rudp_fd* fd, void* userdata, const struct rudp_bunch* bunches[], int count) {
+	config->on_recv = [](struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
 		static_cast<utcp_connection*>(userdata)->on_recv(bunches, count);
 	};
-	config->on_delivery_status = [](struct rudp_fd* fd, void* userdata, int32_t packet_id, bool ack) {
+	config->on_delivery_status = [](struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
 		static_cast<utcp_connection*>(userdata)->on_delivery_status(packet_id, ack);
 	};
 	config->on_log = [](int level, const char* msg) { log(msg); };
-
 
 	config->enable_debug_cookie = true;
 	for (int i = 0; i < sizeof(config->debug_cookie); ++i)
@@ -76,7 +75,7 @@ void utcp_connection::config_rudp()
 
 utcp_connection::utcp_connection(bool is_client)
 {
-	rudp_init(&rudp, this, is_client);
+	utcp_init(&rudp, this, is_client);
 }
 
 utcp_connection::~utcp_connection()
@@ -102,7 +101,7 @@ bool utcp_connection::accept(utcp_connection* listener, bool reconnect)
 	if (!reconnect)
 	{
 		memcpy(rudp.AuthorisedCookie, listener->rudp.AuthorisedCookie, sizeof(rudp.AuthorisedCookie));
-		rudp_sequence_init(&rudp, listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
+		utcp_sequence_init(&rudp, listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
 		log("accept:(%d, %d)", listener->rudp.LastClientSequence, listener->rudp.LastServerSequence);
 	}
 	return true;
@@ -115,24 +114,24 @@ bool utcp_connection::match(utcp_connection* listener)
 
 void utcp_connection::tick()
 {
-	rudp_update(&rudp);
+	utcp_update(&rudp);
 	proc_ordered_cache(false);
 }
 
 void utcp_connection::after_tick()
 {
 	proc_ordered_cache(true);
-	rudp_flush(&rudp);
-	log("rudp_flush");
+	utcp_flush(&rudp);
+	log("utcp_flush");
 }
 
 void utcp_connection::raw_recv(utcp_packet_view* view)
 {
-	auto packet_id = rudp_peep_packet_id(&rudp, view->data, view->data_len);
+	auto packet_id = utcp_peep_packet_id(&rudp, view->data, view->data_len);
 	if (packet_id <= 0)
 	{
 		dump("conn recv_hs", 0, view->data, view->data_len);
-		rudp_ordered_incoming(&rudp, view->data, view->data_len);
+		utcp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 		return;
 	}
@@ -144,9 +143,9 @@ void utcp_connection::raw_recv(utcp_packet_view* view)
 // > 0 packet id
 // = 0 send failed
 // < 0 tmp pocket id
-packet_id_range utcp_connection::send(struct rudp_bunch* bunches[], int bunches_count)
+packet_id_range utcp_connection::send(struct utcp_bunch* bunches[], int bunches_count)
 {
-	return rudp_send(&rudp, bunches, bunches_count);
+	return utcp_send(&rudp, bunches, bunches_count);
 }
 
 void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
@@ -156,7 +155,7 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 		int handle = -1;
 		if (!flushing_order_cache)
 		{
-			handle = rudp_expect_packet_id(&rudp);
+			handle = utcp_expect_packet_id(&rudp);
 		}
 
 		auto view = ordered_cache->pop(handle);
@@ -164,7 +163,7 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 			break;
 
 		dump("conn recv", view->handle, view->data, view->data_len);
-		rudp_ordered_incoming(&rudp, view->data, view->data_len);
+		utcp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 	}
 }

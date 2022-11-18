@@ -1,6 +1,7 @@
 #pragma once
 #include "utcp_connection.h"
 #include <cassert>
+#include <cstring>
 #include <string>
 
 struct encode
@@ -11,7 +12,7 @@ struct encode
 		this->end = data + len;
 	}
 
-	encode& operator<<(uint8_t value)
+	encode& operator<<(const uint8_t value)
 	{
 		assert(pos + sizeof(value) < end);
 		*pos = value;
@@ -27,7 +28,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator<<(uint32_t& value)
+	encode& operator<<(const uint32_t value)
 	{
 		assert(pos + sizeof(value) <= end);
 		*((uint32_t*)pos) = value;
@@ -43,7 +44,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator<<(std::string& value)
+	encode& operator<<(const std::string& value)
 	{
 		auto size = (uint32_t)value.size();
 		*this << size;
@@ -72,7 +73,7 @@ class ds_connection : public utcp_connection
 	ds_connection();
 
   protected:
-	virtual void on_recv(const struct rudp_bunch* bunches[], int count) override;
+	virtual void on_recv(const struct utcp_bunch* bunches[], int count) override;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) override;
 
   private:

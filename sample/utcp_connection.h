@@ -1,6 +1,6 @@
 #pragma once
 #include "socket.h"
-#include "utcp/rudp.h"
+#include "utcp/utcp.h"
 #include <cstdio>
 #include <mutex>
 #include <queue>
@@ -65,12 +65,12 @@ class utcp_connection
 	virtual void after_tick();
 
 	virtual void raw_recv(utcp_packet_view* view);
-	virtual packet_id_range send(struct rudp_bunch* bunches[], int bunches_count);
+	virtual packet_id_range send(struct utcp_bunch* bunches[], int bunches_count);
 
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;
 	virtual void on_raw_send(const void* data, int len);
-	virtual void on_recv(const struct rudp_bunch* bunches[], int count) DISABLE_FUNCTION;
+	virtual void on_recv(const struct utcp_bunch* bunches[], int count) DISABLE_FUNCTION;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) DISABLE_FUNCTION;
 	void dump(const char* type, int ext, const void* data, int len);
 
@@ -83,7 +83,7 @@ class utcp_connection
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_addr_len = 0;
 
-	rudp_fd rudp;
+	utcp_fd rudp;
 
 	utcp_packet_view_ordered_queue* ordered_cache = nullptr;
 };

@@ -121,7 +121,7 @@ void utcp_listener::proc_recv_queue()
 
 			dest_addr_len = view->from_addr_len;
 			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
-			rudp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
+			utcp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
 		}
 		delete view;
 		dest_addr_len = 0;
@@ -132,10 +132,10 @@ void utcp_listener::proc_recv_queue()
 void utcp_listener::tick()
 {
 	auto cur_now = std::chrono::high_resolution_clock::now();
-	rudp_add_time((cur_now - now).count());
+	utcp_add_time((cur_now - now).count());
 	now = cur_now;
 
-	rudp_update(&rudp);
+	utcp_update(&rudp);
 
 	proc_recv_queue();
 	for (auto& it : clients)

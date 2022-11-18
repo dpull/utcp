@@ -9,7 +9,7 @@ ds_connection::ds_connection() : utcp_connection(false)
 {
 }
 
-void ds_connection::on_recv(const struct rudp_bunch* bunches[], int count)
+void ds_connection::on_recv(const struct utcp_bunch* bunches[], int count)
 {
 	assert(count == 1);
 	if (bunches[0]->DataBitsLen == 0)
@@ -35,7 +35,7 @@ void ds_connection::on_recv(const struct rudp_bunch* bunches[], int count)
 	case 5:
 		on_msg_login();
 		break;
-		
+
 	default:
 		log("on_recv msg_type=%hhd\n", msg_type);
 	}
@@ -48,7 +48,7 @@ void ds_connection::on_delivery_status(int32_t packet_id, bool ack)
 
 void ds_connection::send_data()
 {
-	struct rudp_bunch bunch;
+	struct utcp_bunch bunch;
 	memset(&bunch, 0, sizeof(bunch));
 	bunch.NameIndex = 255;
 	bunch.ChIndex = 0;
@@ -58,7 +58,7 @@ void ds_connection::send_data()
 	bunch.DataBitsLen = len * 8;
 	memcpy(bunch.Data, send_buffer, len);
 
-	struct rudp_bunch* bunches[] = {&bunch};
+	struct utcp_bunch* bunches[] = {&bunch};
 	auto ret = send(bunches, 1);
 	log("send bunch [%d, %d]\n", ret.First, ret.Last);
 }
@@ -104,4 +104,3 @@ void ds_connection::on_msg_netspeed()
 	uint32_t Rate;
 	coder >> Rate;
 }
-

@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-#include "rudp_bunch_data_def.h"
-#include "rudp_packet_notify_def.h"
+#include "utcp_bunch_data_def.h"
+#include "utcp_packet_notify_def.h"
 
 #define HANDSHAKE_PACKET_SIZE_BITS 227
 #define RESTART_HANDSHAKE_PACKET_SIZE_BITS 2
@@ -43,7 +43,7 @@ struct packet_id_range
 	int32_t Last;
 };
 
-enum rudp_state
+enum utcp_state
 {
 	UnInitialized,		// HandlerComponent not yet initialized
 	InitializedOnLocal, // Initialized on local instance
@@ -51,19 +51,19 @@ enum rudp_state
 	Initialized			// Initialized on both local and remote instances
 };
 
-enum rudp_mode
+enum utcp_mode
 {
 	Client, // Clientside PacketHandler
 	Server	// Serverside PacketHandler
 };
 
-struct rudp_fd
+struct utcp_fd
 {
 	void* userdata;
 
 	// 握手相关
-	enum rudp_mode mode;
-	enum rudp_state state;
+	enum utcp_mode mode;
+	enum utcp_state state;
 
 	/** Whether or not component handshaking has begun */
 	uint8_t bBeganHandshaking : 1;
@@ -139,15 +139,15 @@ struct rudp_fd
 
 	uint8_t AllowMerge; // Whether to allow merging.
 
-	struct rudp_bunch_data rudp_bunch_data;
+	struct utcp_bunch_data utcp_bunch_data;
 };
 
-struct rudp_config
+struct utcp_config
 {
-	void (*on_accept)(struct rudp_fd* fd, void* userdata, bool reconnect);
-	void (*on_raw_send)(struct rudp_fd* fd, void* userdata, const void* data, int len);
-	void (*on_recv)(struct rudp_fd* fd, void* userdata, const struct rudp_bunch* bunches[], int count);
-	void (*on_delivery_status)(struct rudp_fd* fd, void* userdata, int32_t packet_id, bool ack);
+	void (*on_accept)(struct utcp_fd* fd, void* userdata, bool reconnect);
+	void (*on_raw_send)(struct utcp_fd* fd, void* userdata, const void* data, int len);
+	void (*on_recv)(struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count);
+	void (*on_delivery_status)(struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack);
 	void (*on_log)(int level, const char* msg);
 
 	int64_t ElapsedTime;

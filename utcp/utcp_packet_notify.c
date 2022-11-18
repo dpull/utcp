@@ -1,10 +1,10 @@
-﻿#include "rudp_packet_notify.h"
+﻿#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
-#include "rudp_bunch_data.h"
-#include "rudp_config.h"
-#include "rudp_def.h"
-#include "rudp_packet.h"
-#include "rudp_sequence_number.h"
+#include "utcp_bunch_data.h"
+#include "utcp_def.h"
+#include "utcp_packet.h"
+#include "utcp_sequence_number.h"
+#include "utcp_utils.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,28 +68,28 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	return AckedSeq - MaxSequenceHistoryLength;
 }
 
-static void ReceivedAck(struct rudp_fd* fd, int32_t AckPacketId)
+static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 {
-	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
-	int count = remove_outcoming_data(&fd->rudp_bunch_data, AckPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	struct utcp_bunch_node* utcp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->utcp_bunch_data, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
 	{
-		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node[i]);
 	}
-	rudp_delivery_status(fd, AckPacketId, true);
+	utcp_delivery_status(fd, AckPacketId, true);
 }
 
-static void ReceivedNak(struct rudp_fd* fd, int32_t NakPacketId)
+static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
 {
-	struct rudp_bunch_node* rudp_bunch_node[RELIABLE_BUFFER];
-	int count = remove_outcoming_data(&fd->rudp_bunch_data, NakPacketId, rudp_bunch_node, _countof(rudp_bunch_node));
+	struct utcp_bunch_node* utcp_bunch_node[RELIABLE_BUFFER];
+	int count = remove_outcoming_data(&fd->utcp_bunch_data, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
 	{
-		int32_t packet_id = WriteBitsToSendBuffer(fd, rudp_bunch_node[i]->bunch_data, rudp_bunch_node[i]->bunch_data_len);
-		rudp_bunch_node[i]->packet_id = packet_id;
-		add_outcoming_data(&fd->rudp_bunch_data, rudp_bunch_node[i]);
+		int32_t packet_id = WriteBitsToSendBuffer(fd, utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+		utcp_bunch_node[i]->packet_id = packet_id;
+		add_outcoming_data(&fd->utcp_bunch_data, utcp_bunch_node[i]);
 	}
-	rudp_delivery_status(fd, NakPacketId, false);
+	utcp_delivery_status(fd, NakPacketId, false);
 }
 
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
@@ -146,7 +146,7 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 	}
 }
 
-void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool bDelivered)
+void HandlePacketNotification(struct utcp_fd* fd, uint16_t AckedSequence, bool bDelivered)
 {
 	// Increase LastNotifiedPacketId, this is a full packet Id
 	++fd->LastNotifiedPacketId;
@@ -172,7 +172,7 @@ void HandlePacketNotification(struct rudp_fd* fd, uint16_t AckedSequence, bool b
 }
 
 // FNetPacketNotify::Update
-int32_t packet_notify_Update(struct rudp_fd* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
+int32_t packet_notify_Update(struct utcp_fd* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
 	const int32_t InSeqDelta = GetSequenceDelta(packet_notify, notification_header);
 	if (InSeqDelta > 0)
@@ -310,7 +310,7 @@ bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbu
 }
 
 // FNetPacketNotify::ReadHeader
-int packet_notify_ReadHeader(struct rudp_fd* fd, struct bitbuf* bitbuf, struct notification_header* notification_header)
+int packet_notify_ReadHeader(struct utcp_fd* fd, struct bitbuf* bitbuf, struct notification_header* notification_header)
 {
 	// Read packed header
 	uint32_t PackedHeader = 0;

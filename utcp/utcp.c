@@ -1,35 +1,35 @@
-﻿#include "rudp.h"
+﻿#include "utcp.h"
 #include "bit_buffer.h"
-#include "rudp_bunch_data.h"
-#include "rudp_config.h"
-#include "rudp_handshake.h"
-#include "rudp_packet.h"
-#include "rudp_sequence_number.h"
-#include "rudp_packet_notify.h"
+#include "utcp_bunch_data.h"
+#include "utcp_handshake.h"
+#include "utcp_packet.h"
+#include "utcp_packet_notify.h"
+#include "utcp_sequence_number.h"
+#include "utcp_utils.h"
 #include <assert.h>
 #include <string.h>
 
 #define KeepAliveTime (int)(0.2 * 1000)
 
-static struct rudp_config rudp_config = {0};
+static struct utcp_config utcp_config = {0};
 
-void rudp_add_time(int64_t delta_time_ns)
+void utcp_add_time(int64_t delta_time_ns)
 {
-	rudp_config.ElapsedTime += (delta_time_ns / 1000);
+	utcp_config.ElapsedTime += (delta_time_ns / 1000);
 }
 
-struct rudp_config* rudp_get_config()
+struct utcp_config* utcp_get_config()
 {
-	return &rudp_config;
+	return &utcp_config;
 }
 
-void rudp_init(struct rudp_fd* fd, void* userdata, int is_client)
+void utcp_init(struct utcp_fd* fd, void* userdata, int is_client)
 {
 	memset(fd, 0, sizeof(*fd));
 	fd->userdata = userdata;
 	fd->mode = is_client ? Client : Server;
 	fd->ActiveSecret = 255;
-	init_rudp_bunch_data(&fd->rudp_bunch_data);
+	init_utcp_bunch_data(&fd->utcp_bunch_data);
 
 	if (is_client)
 	{
@@ -39,7 +39,7 @@ void rudp_init(struct rudp_fd* fd, void* userdata, int is_client)
 }
 
 // UIpNetDriver::ProcessConnectionlessPacket
-int rudp_connectionless_incoming(struct rudp_fd* fd, const char* address, const uint8_t* buffer, int len)
+int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -62,7 +62,7 @@ int rudp_connectionless_incoming(struct rudp_fd* fd, const char* address, const 
 	{
 		if (bRestartedHandshake)
 		{
-			rudp_accept(fd, false);
+			utcp_accept(fd, true);
 		}
 
 		// bIgnorePacket = false
@@ -71,14 +71,14 @@ int rudp_connectionless_incoming(struct rudp_fd* fd, const char* address, const 
 	{
 		if (!bRestartedHandshake)
 		{
-			rudp_accept(fd, true);
+			utcp_accept(fd, false);
 		}
 		ResetChallengeData(fd);
 	}
 	return 0;
 }
 
-void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
+void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
 {
 	fd->InPacketId = IncomingSequence - 1;
 	fd->OutPacketId = OutgoingSequence;
@@ -100,7 +100,7 @@ void rudp_sequence_init(struct rudp_fd* fd, int32_t IncomingSequence, int32_t Ou
 // ReceivedRawPacket
 // PacketHandler
 // StatelessConnectHandlerComponent::Incoming
-int rudp_ordered_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
+int utcp_ordered_incoming(struct utcp_fd* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -120,8 +120,6 @@ int rudp_ordered_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 		return 0;
 	}
 
-	// TODO PacketHandler::ReplaceIncomingPacket
-	// 这儿应当直接size-1就可以, 但先参考unreal的做法
 	bitbuf.size--;
 	ret = ReceivedPacket(fd, &bitbuf);
 	if (ret != 0)
@@ -131,14 +129,14 @@ int rudp_ordered_incoming(struct rudp_fd* fd, uint8_t* buffer, int len)
 
 	left_bits = bitbuf_left_bits(&bitbuf);
 	assert(left_bits == 0);
-	return left_bits;
+	return 0;
 }
 
-int rudp_update(struct rudp_fd* fd)
+int utcp_update(struct utcp_fd* fd)
 {
 	if (fd->mode == Client)
 	{
-		int64_t now = rudp_gettime_ms();
+		int64_t now = utcp_gettime_ms();
 		if (fd->state != Initialized && fd->LastClientSendTimestamp != 0)
 		{
 			int64_t LastSendTimeDiff = -fd->LastClientSendTimestamp;
@@ -148,7 +146,7 @@ int rudp_update(struct rudp_fd* fd)
 
 				if (bRestartChallenge)
 				{
-					rudp_set_state(fd, UnInitialized);
+					utcp_set_state(fd, UnInitialized);
 				}
 
 				if (fd->state == UnInitialized)
@@ -164,7 +162,7 @@ int rudp_update(struct rudp_fd* fd)
 	}
 	else
 	{
-		double now = rudp_gettime();
+		double now = utcp_gettime();
 		if (now - fd->LastSecretUpdateTimestamp > SECRET_UPDATE_TIME || fd->LastSecretUpdateTimestamp == 0)
 		{
 			UpdateSecret(fd);
@@ -173,7 +171,7 @@ int rudp_update(struct rudp_fd* fd)
 	return 0;
 }
 
-int32_t rudp_peep_packet_id(struct rudp_fd* fd, uint8_t* buffer, int len)
+int32_t utcp_peep_packet_id(struct utcp_fd* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -190,12 +188,12 @@ int32_t rudp_peep_packet_id(struct rudp_fd* fd, uint8_t* buffer, int len)
 	return PeekPacketId(fd, &bitbuf);
 }
 
-int32_t rudp_expect_packet_id(struct rudp_fd* fd)
+int32_t utcp_expect_packet_id(struct utcp_fd* fd)
 {
 	return fd->InPacketId + 1;
 }
 
-struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
+struct packet_id_range utcp_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
 {
 	struct packet_id_range PacketIdRange = {PACKET_ID_INDEX_NONE, PACKET_ID_INDEX_NONE};
 	if (!check_can_send(fd, bunches, bunches_count))
@@ -215,9 +213,9 @@ struct packet_id_range rudp_send(struct rudp_fd* fd, struct rudp_bunch* bunches[
 }
 
 // UNetConnection::FlushNet
-int rudp_flush(struct rudp_fd* fd)
+int utcp_flush(struct utcp_fd* fd)
 {
-	int64_t now = rudp_gettime_ms();
+	int64_t now = utcp_gettime_ms();
 	if (fd->SendBufferBitsNum == 0 && !fd->HasDirtyAcks && (now - fd->LastSendTime) < KeepAliveTime)
 		return 0;
 
@@ -238,7 +236,7 @@ int rudp_flush(struct rudp_fd* fd)
 	WriteFinalPacketInfo(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;

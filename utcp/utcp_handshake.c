@@ -1,24 +1,24 @@
-﻿#include "rudp_handshake.h"
+﻿#include "utcp_handshake.h"
 #include "bit_buffer.h"
-#include "rudp.h"
-#include "rudp_config.h"
-#include "rudp_sequence_number.h"
+#include "utcp.h"
+#include "utcp_sequence_number.h"
+#include "utcp_utils.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum 
+enum
 {
 	MAX_PACKETID = SeqNumberCount,
 };
 
-static inline int32_t GetAdjustedSizeBits(struct rudp_fd* fd, int32_t InSizeBits)
+static inline int32_t GetAdjustedSizeBits(struct utcp_fd* fd, int32_t InSizeBits)
 { // return MagicHeader.Num() + InSizeBits;
 	return 0 + InSizeBits;
 }
 
 // StatelessConnectHandlerComponent::GenerateCookie
-static void GenerateCookie(struct rudp_fd* fd, const char* ClientAddress, uint8_t SecretId, double Timestamp, uint8_t* OutCookie)
+static void GenerateCookie(struct utcp_fd* fd, const char* ClientAddress, uint8_t SecretId, double Timestamp, uint8_t* OutCookie)
 {
 	if (!try_use_debug_cookie(OutCookie))
 	{
@@ -29,7 +29,7 @@ static void GenerateCookie(struct rudp_fd* fd, const char* ClientAddress, uint8_
 }
 
 // StatelessConnectHandlerComponent::CapHandshakePacket
-void CapHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
+void CapHandshakePacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(fd, 0);
 	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
@@ -37,9 +37,9 @@ void CapHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 	bitbuf_write_end(bitbuf);
 }
 
-void UpdateSecret(struct rudp_fd* fd)
+void UpdateSecret(struct utcp_fd* fd)
 {
-	fd->LastSecretUpdateTimestamp = rudp_gettime();
+	fd->LastSecretUpdateTimestamp = utcp_gettime();
 
 	// On first update, update both secrets
 	if (fd->ActiveSecret == 255)
@@ -65,7 +65,7 @@ void UpdateSecret(struct rudp_fd* fd)
 }
 
 // StatelessConnectHandlerComponent::NotifyHandshakeBegin
-void NotifyHandshakeBegin(struct rudp_fd* fd)
+void NotifyHandshakeBegin(struct utcp_fd* fd)
 {
 	if (fd->mode != Client)
 		return;
@@ -93,12 +93,12 @@ void NotifyHandshakeBegin(struct rudp_fd* fd)
 
 	CapHandshakePacket(fd, &bitbuf);
 
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
-	fd->LastClientSendTimestamp = rudp_gettime_ms();
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	fd->LastClientSendTimestamp = utcp_gettime_ms();
 }
 
-static bool ParseHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp,
-								 uint8_t* OutCookie, uint8_t* OutOrigCookie)
+static bool ParseHandshakePacket(struct utcp_fd* fd, struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie,
+								 uint8_t* OutOrigCookie)
 {
 	bool bValidPacket = false;
 	size_t BitsLeft = bitbuf->size - bitbuf->num;
@@ -140,7 +140,7 @@ static bool ParseHandshakePacket(struct rudp_fd* fd, struct bitbuf* bitbuf, uint
 }
 
 // StatelessConnectHandlerComponent::SendConnectChallenge
-static void SendConnectChallenge(struct rudp_fd* fd, const char* address)
+static void SendConnectChallenge(struct utcp_fd* fd, const char* address)
 {
 	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
 	uint8_t buffer[MaxPacket];
@@ -150,7 +150,7 @@ static void SendConnectChallenge(struct rudp_fd* fd, const char* address)
 
 	uint8_t bHandshakePacket = 1;
 	uint8_t bRestartHandshake = 0; // Ignored clientside
-	double Timestamp = rudp_gettime();
+	double Timestamp = utcp_gettime();
 	uint8_t Cookie[COOKIE_BYTE_SIZE];
 
 	GenerateCookie(fd, address, fd->ActiveSecret, Timestamp, Cookie);
@@ -165,11 +165,11 @@ static void SendConnectChallenge(struct rudp_fd* fd, const char* address)
 
 	CapHandshakePacket(fd, &bitbuf);
 
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendRestartHandshakeRequest
-static void SendRestartHandshakeRequest(struct rudp_fd* fd)
+static void SendRestartHandshakeRequest(struct utcp_fd* fd)
 {
 	// GetAdjustedSizeBits(RESTART_HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
 	uint8_t buffer[MaxPacket];
@@ -187,11 +187,11 @@ static void SendRestartHandshakeRequest(struct rudp_fd* fd)
 
 	CapHandshakePacket(fd, &bitbuf);
 
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendChallengeAck
-static void SendChallengeAck(struct rudp_fd* fd, uint8_t InCookie[COOKIE_BYTE_SIZE])
+static void SendChallengeAck(struct utcp_fd* fd, uint8_t InCookie[COOKIE_BYTE_SIZE])
 {
 	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
 	uint8_t buffer[MaxPacket];
@@ -213,11 +213,11 @@ static void SendChallengeAck(struct rudp_fd* fd, uint8_t InCookie[COOKIE_BYTE_SI
 	bitbuf_write_bytes(&bitbuf, InCookie, COOKIE_BYTE_SIZE);
 
 	CapHandshakePacket(fd, &bitbuf);
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::IncomingConnectionless
-int IncomingConnectionless(struct rudp_fd* fd, const char* address, struct bitbuf* bitbuf)
+int IncomingConnectionless(struct utcp_fd* fd, const char* address, struct bitbuf* bitbuf)
 {
 	read_magic_header(bitbuf);
 
@@ -257,7 +257,7 @@ int IncomingConnectionless(struct rudp_fd* fd, const char* address, struct bitbu
 	// NOTE: Allow CookieDelta to be 0.0, as it is possible for a server to send a challenge and receive a response,
 	//			during the same tick
 	bool bChallengeSuccess = false;
-	const double CookieDelta = rudp_gettime() - Timestamp;
+	const double CookieDelta = utcp_gettime() - Timestamp;
 	const double SecretDelta = Timestamp - fd->LastSecretUpdateTimestamp;
 	const bool bValidCookieLifetime = CookieDelta >= 0.0 && (MAX_COOKIE_LIFETIME - CookieDelta) > 0.0;
 	const bool bValidSecretIdTimestamp = (SecretId == fd->ActiveSecret) ? (SecretDelta >= 0.0) : (SecretDelta <= 0.0);
@@ -299,7 +299,7 @@ int IncomingConnectionless(struct rudp_fd* fd, const char* address, struct bitbu
 }
 
 // StatelessConnectHandlerComponent::SendChallengeResponse
-void SendChallengeResponse(struct rudp_fd* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE])
+void SendChallengeResponse(struct utcp_fd* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE])
 {
 	// int32_t RestartHandshakeResponseSize = RESTART_RESPONSE_SIZE_BITS;
 	// const int32 BaseSize = GetAdjustedSizeBits(fd->bRestartedHandshake ? RestartHandshakeResponseSize : HANDSHAKE_PACKET_SIZE_BITS);
@@ -327,11 +327,11 @@ void SendChallengeResponse(struct rudp_fd* fd, uint8_t InSecretId, double InTime
 	}
 
 	CapHandshakePacket(fd, &bitbuf);
-	rudp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	int16_t* CurSequence = (int16_t*)InCookie;
 
-	fd->LastClientSendTimestamp = rudp_gettime_ms();
+	fd->LastClientSendTimestamp = utcp_gettime_ms();
 	fd->LastSecretId = InSecretId;
 	fd->LastTimestamp = InTimestamp;
 	fd->LastServerSequence = *CurSequence & (MAX_PACKETID - 1);
@@ -340,13 +340,13 @@ void SendChallengeResponse(struct rudp_fd* fd, uint8_t InSecretId, double InTime
 	memcpy(fd->LastCookie, InCookie, sizeof(fd->AuthorisedCookie));
 }
 
-bool HasPassedChallenge(struct rudp_fd* fd, const char* address, bool* bOutRestartedHandshake)
+bool HasPassedChallenge(struct utcp_fd* fd, const char* address, bool* bOutRestartedHandshake)
 {
 	*bOutRestartedHandshake = fd->bRestartedHandshake;
 	return strncmp(fd->LastChallengeSuccessAddress, address, sizeof(fd->LastChallengeSuccessAddress)) == 0;
 }
 
-void ResetChallengeData(struct rudp_fd* fd)
+void ResetChallengeData(struct utcp_fd* fd)
 {
 	fd->LastChallengeSuccessAddress[0] = '\0';
 	fd->bRestartedHandshake = false;
@@ -356,7 +356,7 @@ void ResetChallengeData(struct rudp_fd* fd)
 }
 
 // void StatelessConnectHandlerComponent::Incoming(FBitReader& Packet)
-int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
+int Incoming(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	read_magic_header(bitbuf);
 
@@ -390,12 +390,12 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
 				// Receiving challenge, verify the timestamp is > 0.0f
 				else if (Timestamp > 0.0)
 				{
-					fd->LastChallengeTimestamp = rudp_gettime_ms();
+					fd->LastChallengeTimestamp = utcp_gettime_ms();
 
 					SendChallengeResponse(fd, SecretId, Timestamp, Cookie);
 
 					// Utilize this state as an intermediary, indicating that the challenge response has been sent
-					rudp_set_state(fd, InitializedOnLocal);
+					utcp_set_state(fd, InitializedOnLocal);
 				}
 				// Receiving challenge ack, verify the timestamp is < 0.0f
 				else if (Timestamp < 0.0)
@@ -407,13 +407,13 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
 						fd->LastServerSequence = *CurSequence & (MAX_PACKETID - 1);
 						fd->LastClientSequence = *(CurSequence + 1) & (MAX_PACKETID - 1);
 
-						rudp_sequence_init(fd, fd->LastServerSequence, fd->LastClientSequence);
+						utcp_sequence_init(fd, fd->LastServerSequence, fd->LastClientSequence);
 						// Save the final authorized cookie
 						memcpy(fd->AuthorisedCookie, Cookie, sizeof(fd->AuthorisedCookie));
 					}
 
 					// Now finish initializing the handler - flushing the queued packet buffer in the process.
-					rudp_set_state(fd, Initialized);
+					utcp_set_state(fd, Initialized);
 
 					// TODO 连接成功发包 PacketHandler::HandlerComponentInitialized  -->PacketHandler::HandlerInitialized(通知业务层发送
 					// UPendingNetGame::SendInitialJoin) Initialized();
@@ -431,7 +431,7 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
 				{
 					bool bPassedDelayCheck = false;
 					bool bPassedDualIPCheck = false;
-					int64_t CurrentTime = rudp_gettime_ms();
+					int64_t CurrentTime = utcp_gettime_ms();
 
 					if (!fd->bRestartedHandshake)
 					{
@@ -454,7 +454,7 @@ int Incoming(struct rudp_fd* fd, struct bitbuf* bitbuf)
 						// UE_LOG(LogHandshake, Log, TEXT("Beginning restart handshake process."));
 
 						fd->bRestartedHandshake = true;
-						rudp_set_state(fd, UnInitialized);
+						utcp_set_state(fd, UnInitialized);
 						NotifyHandshakeBegin(fd);
 					}
 					else

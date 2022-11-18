@@ -27,7 +27,7 @@ That leaves 1472 bytes (ipv4) or 1452 (ipv6) for your data.
 #define UDP_MTU_SIZE (1452)
 #define BUNCH_NODE_CACHE_MAX_SIZE (1024)
 
-struct rudp_bunch
+struct utcp_bunch
 {
 	uint32_t NameIndex;
 	int32_t ChSequence;
@@ -49,12 +49,12 @@ struct rudp_bunch
 	uint8_t Data[UDP_MTU_SIZE];
 };
 
-struct rudp_bunch_node
+struct utcp_bunch_node
 {
 	struct dl_list_node dl_list_node;
 
 	union {
-		struct rudp_bunch rudp_bunch;
+		struct utcp_bunch utcp_bunch;
 		struct
 		{
 			int32_t packet_id;
@@ -64,9 +64,9 @@ struct rudp_bunch_node
 	};
 };
 
-struct rudp_bunch_data
+struct utcp_bunch_data
 {
-	struct rudp_bunch_node cache[BUNCH_NODE_CACHE_MAX_SIZE];
+	struct utcp_bunch_node cache[BUNCH_NODE_CACHE_MAX_SIZE];
 	struct dl_list_node free_list;
 
 	struct dl_list_node InRec;

@@ -1,11 +1,11 @@
-﻿#include "rudp_packet.h"
+﻿#include "utcp_packet.h"
 #include "bit_buffer.h"
-#include "rudp.h"
-#include "rudp_bunch.h"
-#include "rudp_bunch_data.h"
-#include "rudp_config.h"
-#include "rudp_handshake.h"
-#include "rudp_packet_notify.h"
+#include "utcp.h"
+#include "utcp_bunch.h"
+#include "utcp_bunch_data.h"
+#include "utcp_handshake.h"
+#include "utcp_packet_notify.h"
+#include "utcp_utils.h"
 #include <assert.h>
 
 enum
@@ -49,7 +49,7 @@ static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max
 
 // UChannel::ReceivedNextBunch
 // 原本ReceivedNextBunch返回值是bDeleted, 为了简化, 该函数做释放或者引用
-static bool ReceivedNextBunch(struct rudp_fd* fd, struct rudp_bunch_node* rudp_bunch_node, bool* bOutSkipAck)
+static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_bunch_node, bool* bOutSkipAck)
 {
 	// We received the next bunch. Basically at this point:
 	//	-We know this is in order if reliable
@@ -58,135 +58,134 @@ static bool ReceivedNextBunch(struct rudp_fd* fd, struct rudp_bunch_node* rudp_b
 
 	// Note this bunch's retirement.
 
-	struct rudp_bunch* rudp_bunch = &rudp_bunch_node->rudp_bunch;
-	if (rudp_bunch->bReliable)
+	struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
+	if (utcp_bunch->bReliable)
 	{
 		// Reliables should be ordered properly at this point
-		assert(rudp_bunch->ChSequence == fd->InReliable[rudp_bunch->ChIndex] + 1);
-		fd->InReliable[rudp_bunch->ChIndex] = rudp_bunch->ChSequence;
+		assert(utcp_bunch->ChSequence == fd->InReliable[utcp_bunch->ChIndex] + 1);
+		fd->InReliable[utcp_bunch->ChIndex] = utcp_bunch->ChSequence;
 	}
 
-	struct rudp_bunch* HandleBunch[MaxSequenceHistoryLength];
-	HandleBunch[0] = rudp_bunch;
+	struct utcp_bunch* HandleBunch[MaxSequenceHistoryLength];
+	HandleBunch[0] = utcp_bunch;
 	int HandleBunchCount = 1;
-	bool bPartial = rudp_bunch->bPartial;
+	bool bPartial = utcp_bunch->bPartial;
 	if (bPartial)
 	{
-		int ret = merge_partial_data(&fd->rudp_bunch_data, rudp_bunch_node, bOutSkipAck);
+		int ret = merge_partial_data(&fd->utcp_bunch_data, utcp_bunch_node, bOutSkipAck);
 		if (ret == 0)
 		{
 			return true;
 		}
 		else if (ret == 1)
 		{
-			HandleBunchCount = get_partial_bunch(&fd->rudp_bunch_data, HandleBunch, HandleBunchCount);
+			HandleBunchCount = get_partial_bunch(&fd->utcp_bunch_data, HandleBunch, HandleBunchCount);
 		}
 		else
 		{
 			assert(ret == -1);
-			free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
+			free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
 			return false;
 		}
 	}
 
-	rudp_recv(fd, HandleBunch, HandleBunchCount);
+	utcp_recv(fd, HandleBunch, HandleBunchCount);
 	if (bPartial)
 	{
 		assert(HandleBunchCount > 1);
-		clear_partial_data(&fd->rudp_bunch_data);
+		clear_partial_data(&fd->utcp_bunch_data);
 	}
 	else
 	{
-		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
+		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
 	}
 	return true;
 }
 
-static int ReceivedRawBunch(struct rudp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
+static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
 {
-	struct rudp_bunch_node* rudp_bunch_node = alloc_rudp_bunch_node(&fd->rudp_bunch_data);
-	if (!rudp_bunch_node)
+	struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(&fd->utcp_bunch_data);
+	if (!utcp_bunch_node)
 		return -1;
 
 	int ret = 0;
 	uint16_t ChIndex = 0;
 	do
 	{
-		struct rudp_bunch* rudp_bunch = &rudp_bunch_node->rudp_bunch;
-		ChIndex = rudp_bunch->ChIndex;
-
-		if (!rudp_bunch_read(rudp_bunch, bitbuf))
+		struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
+		if (!utcp_bunch_read(utcp_bunch, bitbuf))
 		{
 			ret = -2;
 			break;
 		}
 
-		if (rudp_bunch->bReliable)
+		ChIndex = utcp_bunch->ChIndex;
+		if (utcp_bunch->bReliable)
 		{
-			rudp_bunch->ChSequence = MakeRelative(rudp_bunch->ChSequence, fd->InReliable[ChIndex], MAX_CHSEQUENCE);
+			utcp_bunch->ChSequence = MakeRelative(utcp_bunch->ChSequence, fd->InReliable[ChIndex], MAX_CHSEQUENCE);
 		}
-		else if (rudp_bunch->bPartial)
+		else if (utcp_bunch->bPartial)
 		{
 			// If this is an unreliable partial bunch, we simply use packet sequence since we already have it
-			rudp_bunch->ChSequence = fd->InPacketId;
+			utcp_bunch->ChSequence = fd->InPacketId;
 		}
 
 		// Ignore if reliable packet has already been processed.
-		if (rudp_bunch->bReliable && rudp_bunch->ChSequence <= fd->InReliable[rudp_bunch->ChIndex])
+		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= fd->InReliable[utcp_bunch->ChIndex])
 		{
-			rudp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", rudp_bunch->ChIndex, fd->InReliable[rudp_bunch->ChIndex]);
+			utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, fd->InReliable[utcp_bunch->ChIndex]);
 			continue;
 		}
 
-		if (rudp_bunch->bReliable && rudp_bunch->ChSequence != fd->InReliable[rudp_bunch->ChIndex] + 1)
+		if (utcp_bunch->bReliable && utcp_bunch->ChSequence != fd->InReliable[utcp_bunch->ChIndex] + 1)
 		{
 			// If this bunch has a dependency on a previous unreceived bunch, buffer it.
-			assert(!rudp_bunch->bOpen);
-			
-			// Verify that UConnection::ReceivedPacket has passed us a valid bunch.
-			assert(rudp_bunch->ChSequence > fd->InReliable[rudp_bunch->ChIndex]);
+			assert(!utcp_bunch->bOpen);
 
-			if (enqueue_incoming_data(&fd->rudp_bunch_data, rudp_bunch_node))
-				rudp_bunch_node = NULL;
+			// Verify that UConnection::ReceivedPacket has passed us a valid bunch.
+			assert(utcp_bunch->ChSequence > fd->InReliable[utcp_bunch->ChIndex]);
+
+			if (enqueue_incoming_data(&fd->utcp_bunch_data, utcp_bunch_node))
+				utcp_bunch_node = NULL;
 			break;
 		}
 
-		assert(rudp_bunch_node->dl_list_node.prev == NULL);
-		assert(rudp_bunch_node->dl_list_node.next == NULL);
-		ReceivedNextBunch(fd, rudp_bunch_node, bOutSkipAck);
-		assert(rudp_bunch_node->dl_list_node.prev != NULL);
-		assert(rudp_bunch_node->dl_list_node.next != NULL);
-		rudp_bunch_node = NULL;
+		assert(utcp_bunch_node->dl_list_node.prev == NULL);
+		assert(utcp_bunch_node->dl_list_node.next == NULL);
+		ReceivedNextBunch(fd, utcp_bunch_node, bOutSkipAck);
+		assert(utcp_bunch_node->dl_list_node.prev != NULL);
+		assert(utcp_bunch_node->dl_list_node.next != NULL);
+		utcp_bunch_node = NULL;
 	} while (false);
 
-	if (rudp_bunch_node)
+	if (utcp_bunch_node)
 	{
-		assert(rudp_bunch_node->dl_list_node.prev == NULL);
-		assert(rudp_bunch_node->dl_list_node.next == NULL);
-		free_rudp_bunch_node(&fd->rudp_bunch_data, rudp_bunch_node);
-		rudp_bunch_node = NULL;
+		assert(utcp_bunch_node->dl_list_node.prev == NULL);
+		assert(utcp_bunch_node->dl_list_node.next == NULL);
+		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
+		utcp_bunch_node = NULL;
 	}
 
 	while (true)
 	{
-		rudp_bunch_node = dequeue_incoming_data(&fd->rudp_bunch_data, fd->InReliable[ChIndex] + 1);
-		if (!rudp_bunch_node)
+		utcp_bunch_node = dequeue_incoming_data(&fd->utcp_bunch_data, fd->InReliable[ChIndex] + 1);
+		if (!utcp_bunch_node)
 			break;
 		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
 		// Definitely want to warn when this happens, since it's really not possible
 		bool bLocalSkipAck = false;
-		assert(rudp_bunch_node->dl_list_node.prev == NULL);
-		assert(rudp_bunch_node->dl_list_node.next == NULL);
-		ReceivedNextBunch(fd, rudp_bunch_node, &bLocalSkipAck);
-		assert(rudp_bunch_node->dl_list_node.prev != NULL);
-		assert(rudp_bunch_node->dl_list_node.next != NULL);
-		rudp_bunch_node = NULL;
+		assert(utcp_bunch_node->dl_list_node.prev == NULL);
+		assert(utcp_bunch_node->dl_list_node.next == NULL);
+		ReceivedNextBunch(fd, utcp_bunch_node, &bLocalSkipAck);
+		assert(utcp_bunch_node->dl_list_node.prev != NULL);
+		assert(utcp_bunch_node->dl_list_node.next != NULL);
+		utcp_bunch_node = NULL;
 	}
 	return ret;
 }
 
 // UNetConnection::ReceivedPacket
-int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
+int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
@@ -195,7 +194,7 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 		return ret;
 	}
 	uint8_t bHasPacketInfoPayload = true;
-	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload)) 
+	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload))
 		return -4;
 	uint32_t PacketJitterClockTimeMS = 0;
 	if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
@@ -255,7 +254,7 @@ int ReceivedPacket(struct rudp_fd* fd, struct bitbuf* bitbuf)
 	return 0;
 }
 
-int PeekPacketId(struct rudp_fd* fd, struct bitbuf* bitbuf)
+int PeekPacketId(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
@@ -272,7 +271,7 @@ int PeekPacketId(struct rudp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // UNetConnection::GetFreeSendBufferBits
-int64_t GetFreeSendBufferBits(struct rudp_fd* fd)
+int64_t GetFreeSendBufferBits(struct utcp_fd* fd)
 {
 	// If we haven't sent anything yet, make sure to account for the packet header + trailer size
 	// Otherwise, we only need to account for trailer size
@@ -286,7 +285,7 @@ int64_t GetFreeSendBufferBits(struct rudp_fd* fd)
 }
 
 // UNetConnection::WritePacketHeader
-void WritePacketHeader(struct rudp_fd* fd, struct bitbuf* bitbuf)
+void WritePacketHeader(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	// If this is a header refresh, we only serialize the updated serial number information
 	size_t restore_num = bitbuf->num;
@@ -316,7 +315,7 @@ void WritePacketHeader(struct rudp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // UNetConnection::WriteDummyPacketInfo
-void WriteDummyPacketInfo(struct rudp_fd* fd, struct bitbuf* bitbuf)
+void WriteDummyPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	// The first packet of a frame will include the packet info payload
 	const uint8_t bHasPacketInfoPayload = 0;
@@ -324,14 +323,14 @@ void WriteDummyPacketInfo(struct rudp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // void UNetConnection::PrepareWriteBitsToSendBuffer
-void PrepareWriteBitsToSendBuffer(struct rudp_fd* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
+void PrepareWriteBitsToSendBuffer(struct utcp_fd* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
 {
 	const int32_t TotalSizeInBits = SizeInBits + ExtraSizeInBits;
 
 	// Flush if we can't add to current buffer
 	if (TotalSizeInBits > GetFreeSendBufferBits(fd))
 	{
-		rudp_flush(fd);
+		utcp_flush(fd);
 	}
 
 	// If this is the start of the queue, make sure to add the packet id
@@ -357,8 +356,7 @@ void PrepareWriteBitsToSendBuffer(struct rudp_fd* fd, const int32_t SizeInBits, 
 }
 
 // UNetConnection::WriteBitsToSendBufferInternal
-int32_t WriteBitsToSendBufferInternal(struct rudp_fd* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits,
-									  const int32_t ExtraSizeInBits)
+int32_t WriteBitsToSendBufferInternal(struct utcp_fd* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
 {
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));
@@ -381,20 +379,20 @@ int32_t WriteBitsToSendBufferInternal(struct rudp_fd* fd, const uint8_t* Bits, c
 	// Flush now if we are full
 	if (GetFreeSendBufferBits(fd) == 0)
 	{
-		rudp_flush(fd);
+		utcp_flush(fd);
 	}
 
 	return RememberedPacketId;
 }
 
 // UNetConnection::WriteFinalPacketInfo
-void WriteFinalPacketInfo(struct rudp_fd* fd, struct bitbuf* bitbuf)
+void WriteFinalPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 {
 	// Write Jitter clock time
 	// 暂时不移植这个功能了
 }
 
-bool check_can_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunches_count)
+bool check_can_send(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
 {
 	for (int i = 0; i < bunches_count; ++i)
 	{
@@ -429,17 +427,17 @@ bool check_can_send(struct rudp_fd* fd, struct rudp_bunch* bunches[], int bunche
 		}
 	}
 
-	const bool bOverflowsReliable = (fd->rudp_bunch_data.NumOutRec + bunches_count >= RELIABLE_BUFFER);
+	const bool bOverflowsReliable = (fd->utcp_bunch_data.NumOutRec + bunches_count >= RELIABLE_BUFFER);
 	if (bOverflowsReliable)
 		return false;
 	return true;
 }
 
 // UNetConnection::SendRawBunch
-int32_t SendRawBunch(struct rudp_fd* fd, struct rudp_bunch* bunch)
+int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
 	//  UChannel::PrepBunch
-	bunch->ChSequence = 0; 
+	bunch->ChSequence = 0;
 	if (bunch->bReliable)
 		bunch->ChSequence = ++fd->OutReliable[bunch->ChIndex];
 
@@ -451,7 +449,7 @@ int32_t SendRawBunch(struct rudp_fd* fd, struct rudp_bunch* bunch)
 		return -1;
 	}
 
-	if (!rudp_bunch_write_header(bunch, &bitbuf))
+	if (!utcp_bunch_write_header(bunch, &bitbuf))
 	{
 		assert(false);
 		return -1;
@@ -471,22 +469,22 @@ int32_t SendRawBunch(struct rudp_fd* fd, struct rudp_bunch* bunch)
 
 	if (bunch->bReliable)
 	{
-		struct rudp_bunch_node* rudp_bunch_node = alloc_rudp_bunch_node(&fd->rudp_bunch_data);
+		struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(&fd->utcp_bunch_data);
 		struct bitbuf bitbuf_all;
-		bitbuf_write_init(&bitbuf_all, rudp_bunch_node->bunch_data, sizeof(rudp_bunch_node->bunch_data));
+		bitbuf_write_init(&bitbuf_all, utcp_bunch_node->bunch_data, sizeof(utcp_bunch_node->bunch_data));
 		bitbuf_write_bits(&bitbuf_all, buffer, bitbuf.num);
 		bitbuf_write_bits(&bitbuf_all, bunch->Data, bunch->DataBitsLen);
 
-		rudp_bunch_node->packet_id = PacketId;
-		rudp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
-		add_outcoming_data(&fd->rudp_bunch_data, rudp_bunch_node);
+		utcp_bunch_node->packet_id = PacketId;
+		utcp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
+		add_outcoming_data(&fd->utcp_bunch_data, utcp_bunch_node);
 	}
 
 	return PacketId;
 }
 
 // UNetConnection::WriteBitsToSendBuffer
-int WriteBitsToSendBuffer(struct rudp_fd* fd, char* buffer, int bits_len)
+int WriteBitsToSendBuffer(struct utcp_fd* fd, char* buffer, int bits_len)
 {
 	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
 	return WriteBitsToSendBufferInternal(fd, NULL, 0, buffer, bits_len);
