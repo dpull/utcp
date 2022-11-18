@@ -477,7 +477,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 
 		utcp_bunch_node->packet_id = PacketId;
 		utcp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
-		add_outcoming_data(&fd->utcp_bunch_data, utcp_bunch_node);
+		add_outcome_data(&fd->utcp_bunch_data, utcp_bunch_node);
 	}
 
 	return PacketId;

@@ -250,14 +250,14 @@ int get_partial_bunch(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch
 	return true;
 }
 
-void add_outcoming_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node)
+void add_outcome_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node)
 {
 	assert(utcp_bunch_node->packet_id >= 0);
 	dl_list_push_back(&utcp_bunch_data->OutRec, &utcp_bunch_node->dl_list_node);
 	utcp_bunch_data->NumOutRec++;
 }
 
-int remove_outcoming_data(struct utcp_bunch_data* utcp_bunch_data, int32_t packet_id, struct utcp_bunch_node* bunch_node[], int bunch_node_size)
+int remove_outcome_data(struct utcp_bunch_data* utcp_bunch_data, int32_t packet_id, struct utcp_bunch_node* bunch_node[], int bunch_node_size)
 {
 	int count = 0;
 	struct dl_list_node* dl_list_node = utcp_bunch_data->OutRec.next;

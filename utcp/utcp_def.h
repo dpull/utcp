@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -148,7 +149,7 @@ struct utcp_config
 	void (*on_raw_send)(struct utcp_fd* fd, void* userdata, const void* data, int len);
 	void (*on_recv)(struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count);
 	void (*on_delivery_status)(struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack);
-	void (*on_log)(int level, const char* msg);
+	void (*on_log)(int level, const char* msg, va_list args);
 
 	int64_t ElapsedTime;
 	uint32_t MagicHeader;

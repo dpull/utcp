@@ -30,6 +30,13 @@ utcp_listener::~utcp_listener()
 	{
 		closesocket(socket_fd);
 	}
+
+	for (auto view : recv_queue)
+	{
+		delete view;
+	}
+
+	assert(proc_queue.size() == 0);
 }
 
 bool utcp_listener::listen(const char* ip, int port)

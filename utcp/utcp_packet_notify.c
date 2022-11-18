@@ -71,7 +71,7 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 {
 	struct utcp_bunch_node* utcp_bunch_node[RELIABLE_BUFFER];
-	int count = remove_outcoming_data(&fd->utcp_bunch_data, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+	int count = remove_outcome_data(&fd->utcp_bunch_data, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
 	{
 		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node[i]);
@@ -82,12 +82,12 @@ static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
 {
 	struct utcp_bunch_node* utcp_bunch_node[RELIABLE_BUFFER];
-	int count = remove_outcoming_data(&fd->utcp_bunch_data, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+	int count = remove_outcome_data(&fd->utcp_bunch_data, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
 	{
-		int32_t packet_id = WriteBitsToSendBuffer(fd, utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+		int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
 		utcp_bunch_node[i]->packet_id = packet_id;
-		add_outcoming_data(&fd->utcp_bunch_data, utcp_bunch_node[i]);
+		add_outcome_data(&fd->utcp_bunch_data, utcp_bunch_node[i]);
 	}
 	utcp_delivery_status(fd, NakPacketId, false);
 }

@@ -66,7 +66,7 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 	if (utcp_bunch->bReliable)
 	{
 		uint32_t ChSequence = 0;
-		if (!bitbuf_read_int(bitbuf, &utcp_bunch->ChSequence, MAX_CHSEQUENCE))
+		if (!bitbuf_read_int(bitbuf, (uint32_t*)&utcp_bunch->ChSequence, MAX_CHSEQUENCE))
 		{
 			return false;
 		}

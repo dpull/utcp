@@ -7,7 +7,7 @@ int main(int argc, const char* argv[])
 {
 	log("server start");
 
-	utcp_connection::config_rudp();
+	utcp_connection::config_utcp();
 	std::unique_ptr<utcp_listener> listener(new utcp_listener);
 
 	listener->listen("127.0.0.1", 7777);

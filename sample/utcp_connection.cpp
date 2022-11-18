@@ -1,5 +1,6 @@
 #include "utcp_connection.h"
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
@@ -20,7 +21,7 @@ struct WSAGuard
 static WSAGuard _WSAGuard;
 #endif
 
-void log(const char* fmt, ...)
+static void log(const char* fmt, va_list marker)
 {
 	static FILE* fd = nullptr;
 	if (!fd)
@@ -28,8 +29,6 @@ void log(const char* fmt, ...)
 		fd = fopen("sample_server.log", "a+");
 	}
 
-	va_list marker;
-	va_start(marker, fmt);
 	if (fd)
 	{
 		vfprintf(fd, fmt, marker);
@@ -38,33 +37,40 @@ void log(const char* fmt, ...)
 	}
 	vfprintf(stdout, fmt, marker);
 	fprintf(stdout, "\n");
+}
+
+void log(const char* fmt, ...)
+{
+	va_list marker;
+	va_start(marker, fmt);
+	log(fmt, marker);
 	va_end(marker);
 }
 
-void utcp_connection::config_rudp()
+void utcp_connection::config_utcp()
 {
 	auto config = utcp_get_config();
 	config->on_accept = [](struct utcp_fd* fd, void* userdata, bool reconnect) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
-		static_cast<utcp_connection*>(userdata)->on_accept(reconnect);
+		conn->on_accept(reconnect);
 	};
 	config->on_raw_send = [](struct utcp_fd* fd, void* userdata, const void* data, int len) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
-		static_cast<utcp_connection*>(userdata)->on_raw_send(data, len);
+		conn->on_raw_send(data, len);
 	};
 	config->on_recv = [](struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
-		static_cast<utcp_connection*>(userdata)->on_recv(bunches, count);
+		conn->on_recv(bunches, count);
 	};
 	config->on_delivery_status = [](struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->rudp == fd);
-		static_cast<utcp_connection*>(userdata)->on_delivery_status(packet_id, ack);
+		conn->on_delivery_status(packet_id, ack);
 	};
-	config->on_log = [](int level, const char* msg) { log(msg); };
+	config->on_log = [](int level, const char* msg, va_list args) { log(msg, args); };
 
 	config->enable_debug_cookie = true;
 	for (int i = 0; i < sizeof(config->debug_cookie); ++i)

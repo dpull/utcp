@@ -19,5 +19,5 @@ int merge_partial_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunc
 void clear_partial_data(struct utcp_bunch_data* utcp_bunch_data);
 int get_partial_bunch(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch* bunches[], int bunches_size);
 
-void add_outcoming_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node);
-int remove_outcoming_data(struct utcp_bunch_data* utcp_bunch_data, int32_t packet_id, struct utcp_bunch_node* bunch_node[], int bunch_node_size);
+void add_outcome_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node);
+int remove_outcome_data(struct utcp_bunch_data* utcp_bunch_data, int32_t packet_id, struct utcp_bunch_node* bunch_node[], int bunch_node_size);

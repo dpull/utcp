@@ -9,6 +9,29 @@
 
 extern struct utcp_config* utcp_get_config();
 
+enum log_level
+{
+	NoLogging = 0,
+	Fatal,
+	Error,
+	Warning,
+	Display,
+	Log,
+	Verbose,
+};
+
+static inline void utcp_log(enum log_level level, const char* fmt, ...)
+{
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (utcp_config->on_log)
+	{
+		va_list marker;
+		va_start(marker, fmt);
+		utcp_config->on_log(level, fmt, marker);
+		va_end(marker);
+	}
+}
+
 static inline bool write_magic_header(struct bitbuf* bitbuf)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
@@ -81,55 +104,5 @@ static inline void utcp_delivery_status(struct utcp_fd* fd, int32_t packet_id, b
 	if (utcp_config->on_delivery_status)
 	{
 		utcp_config->on_delivery_status(fd, fd->userdata, packet_id, ack);
-	}
-}
-
-
-enum log_level
-{
-	/** Not used */
-	NoLogging = 0,
-
-	/** Always prints a fatal error to console (and log file) and crashes (even if logging is disabled) */
-	Fatal,
-
-	/**
-	 * Prints an error to console (and log file).
-	 * Commandlets and the editor collect and report errors. Error messages result in commandlet failure.
-	 */
-	Error,
-
-	/**
-	 * Prints a warning to console (and log file).
-	 * Commandlets and the editor collect and report warnings. Warnings can be treated as an error.
-	 */
-	Warning,
-
-	/** Prints a message to console (and log file) */
-	Display,
-
-	/** Prints a message to a log file (does not print to console) */
-	Log,
-
-	/**
-	 * Prints a verbose message to a log file (if Verbose logging is enabled for the given category,
-	 * usually used for detailed logging)
-	 */
-	Verbose,
-};
-
-static inline void utcp_log(enum log_level level, const char* fmt, ...)
-{
-	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->on_log)
-	{
-		char log_buffer[16 * 1024];
-
-		va_list marker;
-		va_start(marker, fmt);
-		vsnprintf(log_buffer, sizeof(log_buffer), fmt, marker);
-		va_end(marker);
-		log_buffer[sizeof(log_buffer) - 1] = '\0';
-		utcp_config->on_log(level, log_buffer);
 	}
 }

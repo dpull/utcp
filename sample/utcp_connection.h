@@ -53,7 +53,7 @@ struct utcp_packet_view_ordered_queue
 class utcp_connection
 {
   public:
-	static void config_rudp();
+	static void config_utcp();
 
 	utcp_connection(bool is_client);
 	~utcp_connection();

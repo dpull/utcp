@@ -204,9 +204,14 @@ struct packet_id_range utcp_send(struct utcp_fd* fd, struct utcp_bunch* bunches[
 		int32_t PacketId = SendRawBunch(fd, bunches[i]);
 		assert(PacketId >= 0);
 		if (i == 0)
+		{
 			PacketIdRange.First = PacketId;
-		else
 			PacketIdRange.Last = PacketId;
+		}
+		else
+		{
+			PacketIdRange.Last = PacketId;
+		}
 	}
 
 	return PacketIdRange;
