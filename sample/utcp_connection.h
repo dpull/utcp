@@ -72,7 +72,6 @@ class utcp_connection
 	virtual void on_raw_send(const void* data, int len);
 	virtual void on_recv(const struct utcp_bunch* bunches[], int count) DISABLE_FUNCTION;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) DISABLE_FUNCTION;
-	void dump(const char* type, int ext, const void* data, int len);
 
   private:
 	void proc_ordered_cache(bool flushing_order_cache);

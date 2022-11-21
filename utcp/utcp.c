@@ -30,17 +30,20 @@ void utcp_init(struct utcp_fd* fd, void* userdata, int is_client)
 	fd->mode = is_client ? Client : Server;
 	fd->ActiveSecret = 255;
 	init_utcp_bunch_data(&fd->utcp_bunch_data);
+}
 
-	if (is_client)
-	{
-		fd->bBeganHandshaking = true;
-		NotifyHandshakeBegin(fd);
-	}
+void utcp_connect(struct utcp_fd* fd)
+{
+	assert(fd->mode == Client);
+	fd->bBeganHandshaking = true;
+	NotifyHandshakeBegin(fd);
 }
 
 // UIpNetDriver::ProcessConnectionlessPacket
 int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const uint8_t* buffer, int len)
 {
+	utcp_dump("connectionless_incoming", 0, buffer, len);
+
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 	{
@@ -103,6 +106,8 @@ void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t Ou
 // StatelessConnectHandlerComponent::Incoming
 int utcp_ordered_incoming(struct utcp_fd* fd, uint8_t* buffer, int len)
 {
+	utcp_dump("ordered_incoming", 0, buffer, len);
+
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 	{
@@ -196,7 +201,7 @@ int32_t utcp_expect_packet_id(struct utcp_fd* fd)
 
 int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
-	return SendRawBunch(fd, bunch); 
+	return SendRawBunch(fd, bunch);
 }
 
 // UNetConnection::FlushNet

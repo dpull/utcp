@@ -14,6 +14,8 @@ void utcp_add_time(int64_t delta_time_ns);
 
 void utcp_init(struct utcp_fd* fd, void* userdata, int is_client);
 
+void utcp_connect(struct utcp_fd* fd);
+
 int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const uint8_t* buffer, int len);
 void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence);
 

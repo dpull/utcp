@@ -136,7 +136,6 @@ void utcp_connection::raw_recv(utcp_packet_view* view)
 	auto packet_id = utcp_peep_packet_id(&rudp, view->data, view->data_len);
 	if (packet_id <= 0)
 	{
-		dump("conn recv_hs", 0, view->data, view->data_len);
 		utcp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 		return;
@@ -168,7 +167,6 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 		if (!view)
 			break;
 
-		dump("conn recv", view->handle, view->data, view->data_len);
 		utcp_ordered_incoming(&rudp, view->data, view->data_len);
 		delete view;
 	}
@@ -176,22 +174,6 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 
 void utcp_connection::on_raw_send(const void* data, int len)
 {
-	dump("send", rudp.OutPacketId, data, len);
 	assert(dest_addr_len > 0);
 	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
-}
-
-void utcp_connection::dump(const char* type, int ext, const void* data, int len)
-{
-	char str[16 * 1024];
-	int size = 0;
-
-	for (int i = 0; i < len; ++i)
-	{
-		if (i != 0)
-			size += snprintf(str + size, sizeof(str) - size, ", ");
-		size += snprintf(str + size, sizeof(str) - size, "0x%hhX", ((const uint8_t*)data)[i]);
-	}
-
-	log("%s-%d\t%d\t{%s}", type, ext, len, str);
 }

@@ -32,6 +32,30 @@ static inline void utcp_log(enum log_level level, const char* fmt, ...)
 	}
 }
 
+static  inline  void utcp_dump(const char* type, int ext, const void* data, int len)
+{
+	char str[UTCP_MAX_PACKET * 8];
+	int size = 0;
+
+	for (int i = 0; i < len; ++i)
+	{
+		if (i != 0)
+		{
+			int ret = snprintf(str + size, sizeof(str) - size, ", ");
+			if (ret < 0)
+				break;
+			size += ret;
+		}
+
+		int ret = snprintf(str + size, sizeof(str) - size, "0x%hhX", ((const uint8_t*)data)[i]);
+		if (ret < 0)
+			break;
+		size += ret;
+	}
+	str[size] = '\0';
+	utcp_log(Verbose, "[DUMP]%s-%d\t%d\t{%s}", type, ext, len, str);
+}
+
 static inline bool write_magic_header(struct bitbuf* bitbuf)
 {
 	struct utcp_config* utcp_config = utcp_get_config();

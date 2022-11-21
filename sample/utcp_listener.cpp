@@ -124,8 +124,6 @@ void utcp_listener::proc_recv_queue()
 
 		if (sockaddr2str((sockaddr_in*)&view->from_addr, ipstr, sizeof(ipstr)))
 		{
-			dump("listener recv", 0, view->data, view->data_len);
-
 			dest_addr_len = view->from_addr_len;
 			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
 			utcp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
