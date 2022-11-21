@@ -58,7 +58,6 @@ class utcp_connection
 	utcp_connection(bool is_client);
 	virtual ~utcp_connection();
 
-	virtual bool accept(utcp_connection* listener, bool reconnect);
 	virtual bool is_cookie_equal(utcp_connection* listener);
 
 	virtual void tick();
@@ -66,6 +65,9 @@ class utcp_connection
 
 	virtual void raw_recv(utcp_packet_view* view);
 	virtual int send(struct utcp_bunch* bunch);
+
+protected:
+	virtual bool accept(utcp_connection* connection, bool reconnect);
 
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;
@@ -82,7 +84,7 @@ class utcp_connection
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_addr_len = 0;
 
-	utcp_fd rudp;
+	utcp_fd utcp;
 
 	utcp_packet_view_ordered_queue* ordered_cache = nullptr;
 };

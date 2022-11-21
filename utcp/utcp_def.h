@@ -11,6 +11,7 @@ extern "C" {
 #endif
 
 #include "utcp_bunch_data_def.h"
+#include "utcp_channel.h"
 #include "utcp_packet_notify_def.h"
 
 #define HANDSHAKE_PACKET_SIZE_BITS 227
@@ -121,8 +122,7 @@ struct utcp_fd
 
 	int32_t InitOutReliable;
 	int32_t InitInReliable;
-	int32_t OutReliable[DEFAULT_MAX_CHANNEL_SIZE];
-	int32_t InReliable[DEFAULT_MAX_CHANNEL_SIZE];
+	struct utcp_channel* Channels[DEFAULT_MAX_CHANNEL_SIZE];
 
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
 	uint32_t HasDirtyAcks;

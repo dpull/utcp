@@ -61,6 +61,7 @@ TEST_F(handshake, client)
 {
 	std::unique_ptr<utcp_fd> fd(new utcp_fd);
 	utcp_init(fd.get(), nullptr, true);
+	utcp_connect(fd.get());
 	ASSERT_EQ(last_send.size(), sizeof(handshake_step1));
 	ASSERT_EQ(memcmp(handshake_step1, last_send.data(), last_send.size()), 0);
 }

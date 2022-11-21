@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "utcp_utils.h"
+
 void init_utcp_bunch_data(struct utcp_bunch_data* utcp_bunch_data)
 {
 	memset(utcp_bunch_data, 0, sizeof(*utcp_bunch_data));
@@ -17,70 +19,6 @@ void init_utcp_bunch_data(struct utcp_bunch_data* utcp_bunch_data)
 	dl_list_init(&utcp_bunch_data->InRec);
 	dl_list_init(&utcp_bunch_data->InPartialBunch);
 	dl_list_init(&utcp_bunch_data->OutRec);
-}
-
-struct utcp_bunch_node* alloc_utcp_bunch_node(struct utcp_bunch_data* utcp_bunch_data)
-{
-	if (dl_list_empty(&utcp_bunch_data->free_list))
-	{
-		assert(false);
-		return NULL;
-	}
-
-	struct dl_list_node* node = dl_list_pop_back(&utcp_bunch_data->free_list);
-	struct utcp_bunch_node* utcp_bunch_node = CONTAINING_RECORD(node, struct utcp_bunch_node, dl_list_node);
-	return utcp_bunch_node;
-}
-
-void free_utcp_bunch_node(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node)
-{
-	dl_list_push_back(&utcp_bunch_data->free_list, &utcp_bunch_node->dl_list_node);
-}
-
-bool enqueue_incoming_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node)
-{
-	assert(utcp_bunch_node->utcp_bunch.bReliable);
-
-	struct dl_list_node* dl_list_node = utcp_bunch_data->InRec.next;
-	while (dl_list_node != &utcp_bunch_data->InRec)
-	{
-		struct utcp_bunch_node* cur_utcp_bunch_node = CONTAINING_RECORD(dl_list_node, struct utcp_bunch_node, dl_list_node);
-		if (utcp_bunch_node->utcp_bunch.ChSequence == cur_utcp_bunch_node->utcp_bunch.ChSequence)
-		{
-			// Already queued.
-			return false;
-		}
-
-		if (utcp_bunch_node->utcp_bunch.ChSequence < cur_utcp_bunch_node->utcp_bunch.ChSequence)
-		{
-			// Stick before this one.
-			break;
-		}
-		dl_list_node = dl_list_node->next;
-	}
-	assert(dl_list_node);
-	dl_list_push_front(dl_list_node, &utcp_bunch_node->dl_list_node);
-	utcp_bunch_data->NumInRec++;
-	return true;
-}
-
-struct utcp_bunch_node* dequeue_incoming_data(struct utcp_bunch_data* utcp_bunch_data, int sequence)
-{
-	if (dl_list_empty(&utcp_bunch_data->InRec))
-	{
-		return NULL;
-	}
-
-	struct dl_list_node* dl_list_node = utcp_bunch_data->InRec.next;
-	struct utcp_bunch_node* utcp_bunch_node = CONTAINING_RECORD(dl_list_node, struct utcp_bunch_node, dl_list_node);
-	if (utcp_bunch_node->utcp_bunch.ChSequence != sequence)
-	{
-		return NULL;
-	}
-
-	dl_list_pop_front(&utcp_bunch_data->InRec);
-	utcp_bunch_data->NumInRec--;
-	return utcp_bunch_node;
 }
 
 static struct utcp_bunch* get_last_partial_bunch(struct utcp_bunch_data* utcp_bunch_data)
@@ -222,7 +160,7 @@ void clear_partial_data(struct utcp_bunch_data* utcp_bunch_data)
 {
 	while (!dl_list_empty(&utcp_bunch_data->InPartialBunch))
 	{
-		struct dl_list_node* dl_list_node = dl_list_pop_back(&utcp_bunch_data->free_list);
+		struct dl_list_node* dl_list_node = dl_list_pop_back(&utcp_bunch_data->InPartialBunch);
 		dl_list_push_back(&utcp_bunch_data->free_list, dl_list_node);
 	}
 }
@@ -247,7 +185,7 @@ int get_partial_bunch(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch
 	assert(count > 1);
 	assert(bunches[0]->bPartialInitial);
 	assert(bunches[count - 1]->bPartialFinal);
-	return true;
+	return count;
 }
 
 void add_ougoing_data(struct utcp_bunch_data* utcp_bunch_data, struct utcp_bunch_node* utcp_bunch_node)

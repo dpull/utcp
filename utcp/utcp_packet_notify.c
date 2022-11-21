@@ -68,19 +68,25 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	return AckedSeq - MaxSequenceHistoryLength;
 }
 
+//  UNetConnection::ReceivedAck
 static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 {
+	// Advance OutAckPacketId
+	fd->OutAckPacketId = AckPacketId;
+	
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
 	int count = remove_ougoing_data(&fd->utcp_bunch_data, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
 	{
-		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node[i]);
+		free_utcp_bunch_node(utcp_bunch_node[i]);
 	}
 	utcp_delivery_status(fd, AckPacketId, true);
 }
 
+// UNetConnection::ReceivedNak
 static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
 {
+	// UChannel::ReceivedNak
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
 	int count = remove_ougoing_data(&fd->utcp_bunch_data, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 	for (int i = 0; i < count; ++i)
@@ -88,6 +94,8 @@ static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
 		int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
 		utcp_bunch_node[i]->packet_id = packet_id;
 		add_ougoing_data(&fd->utcp_bunch_data, utcp_bunch_node[i]);
+
+		utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
 	}
 	utcp_delivery_status(fd, NakPacketId, false);
 }
@@ -154,8 +162,7 @@ void HandlePacketNotification(struct utcp_fd* fd, uint16_t AckedSequence, bool b
 	// Sanity check
 	if (seq_num_init(fd->LastNotifiedPacketId) != AckedSequence)
 	{
-		// UE_LOG(LogNet, Warning, TEXT("LastNotifiedPacketId != AckedSequence"));
-
+		utcp_log(Warning, "[HandlePacketNotification]LastNotifiedPacketId != AckedSequence");
 		// Close(ENetCloseResult::AckSequenceMismatch);
 
 		return;
@@ -227,6 +234,7 @@ int32_t packet_notify_Update(struct utcp_fd* fd, struct packet_notify* packet_no
 				HandlePacketNotification(fd, CurrentAck, IsDelivered);
 				CurrentAck = seq_num_inc(CurrentAck, 1);
 			}
+			packet_notify->OutAckSeq = notification_header->AckedSeq;
 		}
 
 		// accept sequence

@@ -32,6 +32,11 @@ void utcp_init(struct utcp_fd* fd, void* userdata, int is_client)
 	init_utcp_bunch_data(&fd->utcp_bunch_data);
 }
 
+void utcp_uninit(struct utcp_fd* fd)
+{
+	utcp_closeall_channel(fd);
+}
+
 void utcp_connect(struct utcp_fd* fd)
 {
 	assert(fd->mode == Client);
@@ -93,11 +98,6 @@ void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t Ou
 	fd->InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 
-	for (int i = 0; i < DEFAULT_MAX_CHANNEL_SIZE; ++i)
-	{
-		fd->InReliable[i] = fd->InitInReliable;
-		fd->OutReliable[i] = fd->InitOutReliable;
-	}
 	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
 }
 
@@ -201,7 +201,10 @@ int32_t utcp_expect_packet_id(struct utcp_fd* fd)
 
 int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
-	return SendRawBunch(fd, bunch);
+	int32_t packet_id = SendRawBunch(fd, bunch);
+	utcp_log(Verbose, "send bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d, PacketId=%d", bunch->bOpen, bunch->bClose, bunch->NameIndex, bunch->ChIndex,
+			 bunch->DataBitsLen, packet_id);
+	return packet_id;
 }
 
 // UNetConnection::FlushNet

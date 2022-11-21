@@ -3,6 +3,7 @@
 #pragma once
 #include "bit_buffer.h"
 #include "utcp_def.h"
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,7 +33,7 @@ static inline void utcp_log(enum log_level level, const char* fmt, ...)
 	}
 }
 
-static  inline  void utcp_dump(const char* type, int ext, const void* data, int len)
+static inline void utcp_dump(const char* type, int ext, const void* data, int len)
 {
 	char str[UTCP_MAX_PACKET * 8];
 	int size = 0;
@@ -97,6 +98,7 @@ static inline double utcp_gettime(void)
 
 static inline void utcp_raw_send(struct utcp_fd* fd, const void* buffer, size_t len)
 {
+	utcp_dump("raw_send", 0, buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_raw_send)
 	{
@@ -115,6 +117,7 @@ static inline void utcp_accept(struct utcp_fd* fd, bool reconnect)
 
 static inline void utcp_recv(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
 {
+	assert(bunches_count > 0);
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_recv)
 	{

@@ -126,7 +126,7 @@ void utcp_listener::proc_recv_queue()
 		{
 			dest_addr_len = view->from_addr_len;
 			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
-			utcp_connectionless_incoming(&rudp, ipstr, view->data, view->data_len);
+			utcp_connectionless_incoming(&utcp, ipstr, view->data, view->data_len);
 		}
 		delete view;
 		dest_addr_len = 0;
@@ -140,7 +140,7 @@ void utcp_listener::tick()
 	utcp_add_time((cur_now - now).count());
 	now = cur_now;
 
-	utcp_update(&rudp);
+	utcp_update(&utcp);
 
 	proc_recv_queue();
 	for (auto& it : clients)
@@ -181,5 +181,5 @@ void utcp_listener::on_accept(bool reconnect)
 	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&dest_addr, conn));
 	assert(it.second);
 
-	conn->accept(this, reconnect);
+	this->accept(conn, reconnect);
 }

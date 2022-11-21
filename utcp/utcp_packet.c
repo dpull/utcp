@@ -59,11 +59,14 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	// Note this bunch's retirement.
 
 	struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
+	struct utcp_channel* utcp_channel = utcp_get_channel(fd, utcp_bunch->ChIndex);
+	assert(utcp_channel);
+
 	if (utcp_bunch->bReliable)
 	{
 		// Reliables should be ordered properly at this point
-		assert(utcp_bunch->ChSequence == fd->InReliable[utcp_bunch->ChIndex] + 1);
-		fd->InReliable[utcp_bunch->ChIndex] = utcp_bunch->ChSequence;
+		assert(utcp_bunch->ChSequence == utcp_channel->InReliable + 1);
+		utcp_channel->InReliable = utcp_bunch->ChSequence;
 	}
 
 	struct utcp_bunch* HandleBunch[MaxSequenceHistoryLength];
@@ -79,14 +82,22 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 		}
 		else if (ret == 1)
 		{
-			HandleBunchCount = get_partial_bunch(&fd->utcp_bunch_data, HandleBunch, HandleBunchCount);
+			HandleBunchCount = get_partial_bunch(&fd->utcp_bunch_data, HandleBunch, _countof(HandleBunch));
+			assert(HandleBunchCount > 0);
 		}
 		else
 		{
 			assert(ret == -1);
-			free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
+			free_utcp_bunch_node(utcp_bunch_node);
 			return false;
 		}
+	}
+
+	for (int i = 0; i < HandleBunchCount; ++i)
+	{
+		struct utcp_bunch* cur_utcp_bunch = HandleBunch[i];
+		utcp_log(Verbose, "recv bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d", cur_utcp_bunch->bOpen, cur_utcp_bunch->bClose, cur_utcp_bunch->NameIndex,
+				 cur_utcp_bunch->ChIndex, cur_utcp_bunch->DataBitsLen);
 	}
 
 	utcp_recv(fd, HandleBunch, HandleBunchCount);
@@ -97,19 +108,19 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	}
 	else
 	{
-		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
+		free_utcp_bunch_node(utcp_bunch_node);
 	}
 	return true;
 }
 
 static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
 {
-	struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(&fd->utcp_bunch_data);
+	struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(fd);
 	if (!utcp_bunch_node)
 		return -1;
 
 	int ret = 0;
-	uint16_t ChIndex = 0;
+	struct utcp_channel* utcp_channel = NULL;
 	do
 	{
 		struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
@@ -119,10 +130,21 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 			break;
 		}
 
-		ChIndex = utcp_bunch->ChIndex;
+		utcp_channel = utcp_get_channel(fd, utcp_bunch->ChIndex);
+		if (!utcp_channel)
+		{
+			if (utcp_bunch->bOpen)
+				utcp_channel = utcp_open_channel(fd, utcp_bunch->ChIndex);
+		}
+		if (!utcp_channel)
+		{
+			ret = -3;
+			break;
+		}
+
 		if (utcp_bunch->bReliable)
 		{
-			utcp_bunch->ChSequence = MakeRelative(utcp_bunch->ChSequence, fd->InReliable[ChIndex], UTCP_MAX_CHSEQUENCE);
+			utcp_bunch->ChSequence = MakeRelative(utcp_bunch->ChSequence, utcp_channel->InReliable, UTCP_MAX_CHSEQUENCE);
 		}
 		else if (utcp_bunch->bPartial)
 		{
@@ -131,21 +153,21 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		}
 
 		// Ignore if reliable packet has already been processed.
-		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= fd->InReliable[utcp_bunch->ChIndex])
+		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= utcp_channel->InReliable)
 		{
-			utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, fd->InReliable[utcp_bunch->ChIndex]);
+			utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
 			continue;
 		}
 
-		if (utcp_bunch->bReliable && utcp_bunch->ChSequence != fd->InReliable[utcp_bunch->ChIndex] + 1)
+		if (utcp_bunch->bReliable && utcp_bunch->ChSequence != utcp_channel->InReliable + 1)
 		{
 			// If this bunch has a dependency on a previous unreceived bunch, buffer it.
 			assert(!utcp_bunch->bOpen);
 
 			// Verify that UConnection::ReceivedPacket has passed us a valid bunch.
-			assert(utcp_bunch->ChSequence > fd->InReliable[utcp_bunch->ChIndex]);
+			assert(utcp_bunch->ChSequence > utcp_channel->InReliable);
 
-			if (enqueue_incoming_data(&fd->utcp_bunch_data, utcp_bunch_node))
+			if (enqueue_incoming_data(utcp_channel, utcp_bunch_node))
 				utcp_bunch_node = NULL;
 			break;
 		}
@@ -162,13 +184,14 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 	{
 		assert(utcp_bunch_node->dl_list_node.prev == NULL);
 		assert(utcp_bunch_node->dl_list_node.next == NULL);
-		free_utcp_bunch_node(&fd->utcp_bunch_data, utcp_bunch_node);
+		free_utcp_bunch_node(utcp_bunch_node);
 		utcp_bunch_node = NULL;
 	}
 
 	while (true)
 	{
-		utcp_bunch_node = dequeue_incoming_data(&fd->utcp_bunch_data, fd->InReliable[ChIndex] + 1);
+		assert(utcp_channel);
+		utcp_bunch_node = dequeue_incoming_data(utcp_channel, utcp_channel->InReliable + 1);
 		if (!utcp_bunch_node)
 			break;
 		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
@@ -196,10 +219,14 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 	uint8_t bHasPacketInfoPayload = true;
 	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload))
 		return -4;
-	uint32_t PacketJitterClockTimeMS = 0;
-	if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
+
+	if (bHasPacketInfoPayload)
 	{
-		return -2;
+		uint32_t PacketJitterClockTimeMS = 0;
+		if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
+		{
+			return -2;
+		}
 	}
 
 	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
@@ -210,6 +237,7 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 		// The only bunch we would process would be unreliable RPC's, which could allow for replay attacks
 		// So rather than add individual protection for unreliable RPC's as well, just kill it at the source,
 		// which protects everything in one fell swoop
+		utcp_log(Verbose, "'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", notification_header.Seq, fd->packet_notify.InSeq);
 		return -8;
 	}
 
@@ -398,7 +426,11 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 	//  UChannel::PrepBunch
 	bunch->ChSequence = 0;
 	if (bunch->bReliable)
-		bunch->ChSequence = ++fd->OutReliable[bunch->ChIndex];
+	{
+		struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch->ChIndex);
+		assert(utcp_channel);
+		bunch->ChSequence = ++utcp_channel->OutReliable;
+	}
 
 	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
@@ -428,7 +460,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 
 	if (bunch->bReliable)
 	{
-		struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(&fd->utcp_bunch_data);
+		struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(fd);
 		struct bitbuf bitbuf_all;
 		bitbuf_write_init(&bitbuf_all, utcp_bunch_node->bunch_data, sizeof(utcp_bunch_node->bunch_data));
 		bitbuf_write_bits(&bitbuf_all, buffer, bitbuf.num);
