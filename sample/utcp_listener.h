@@ -39,7 +39,7 @@ class utcp_listener : public utcp_connection
   protected:
 	virtual void on_accept(bool reconnect) override;
 
-	virtual void on_recv(const struct utcp_bunch* bunches[], int count) override DISABLE_FUNCTION;
+	virtual void on_recv( struct utcp_bunch* const bunches[], int count) override DISABLE_FUNCTION;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) override DISABLE_FUNCTION;
 
 	void create_recv_thread();

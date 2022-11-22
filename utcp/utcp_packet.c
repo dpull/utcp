@@ -31,6 +31,38 @@ static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max
 	return Reference + BestSignedDifference(Value, Reference, Max);
 }
 
+static struct utcp_channel* utcp_get_channel(struct utcp_fd* fd, int ChIndex)
+{
+	return fd->Channels[ChIndex];
+}
+
+static struct utcp_channel* utcp_open_channel(struct utcp_fd* fd, int ChIndex)
+{
+	assert(!fd->Channels[ChIndex]);
+	fd->Channels[ChIndex] = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
+	return fd->Channels[ChIndex];
+}
+
+static void utcp_close_channel(struct utcp_fd* fd, int ChIndex)
+{
+	if (!fd->Channels[ChIndex])
+		return;
+	free_utcp_channel(fd->Channels[ChIndex]);
+	fd->Channels[ChIndex] = NULL;
+}
+
+void utcp_closeall_channel(struct utcp_fd* fd)
+{
+	for (int i = 0; i < _countof(fd->Channels); ++i)
+	{
+		if (fd->Channels[i])
+		{
+			utcp_close_channel(fd, i);
+		}
+	}
+}
+
+
 // UChannel::ReceivedNextBunch
 // 原本ReceivedNextBunch返回值是bDeleted, 为了简化, 该函数做释放或者引用
 static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_bunch_node, bool* bOutSkipAck)
@@ -426,7 +458,18 @@ void WriteFinalPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
 	struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch->ChIndex);
-	assert(utcp_channel);
+	if (!utcp_channel)
+	{
+		if (bunch->bOpen)
+		{
+			utcp_channel = utcp_open_channel(fd, bunch->ChIndex);
+		}
+	}
+	
+	if (!utcp_channel)
+	{
+		return -2;
+	}
 
 	//  UChannel::PrepBunch
 	bunch->ChSequence = 0;

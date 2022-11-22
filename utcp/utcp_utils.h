@@ -1,4 +1,4 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 #include "bit_buffer.h"
@@ -142,4 +142,25 @@ static inline void utcp_delivery_status(struct utcp_fd* fd, int32_t packet_id, b
 	{
 		utcp_config->on_delivery_status(fd, fd->userdata, packet_id, ack);
 	}
+}
+
+static inline int binary_search(const void* key, const void* base, size_t num, size_t element_size, int (*compar)(const void*, const void*))
+{
+	int lo = 0;
+	int hi = (int)num - 1;
+
+	while (lo <= hi)
+	{
+		// i might overflow if lo and hi are both large positive numbers.
+		int i = lo + ((hi - lo) >> 1);
+
+		int c = compar(key, (char*)base + i * element_size);
+		if (c == 0)
+			return i;
+		if (c > 0)
+			lo = i + 1;
+		else
+			hi = i - 1;
+	}
+	return ~lo;
 }

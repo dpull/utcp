@@ -1,10 +1,11 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "bit_buffer.h"
 #include "utcp_def.h"
 
+void utcp_closeall_channel(struct utcp_fd* fd);
 void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq);
 int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf);
 int PeekPacketId(struct utcp_fd* fd, struct bitbuf* bitbuf);

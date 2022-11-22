@@ -8,11 +8,6 @@
 #include <stdlib.h>
 #include "utcp_def.h"
 
-struct utcp_channel* utcp_get_channel(struct utcp_fd* fd, int ChIndex);
-struct utcp_channel* utcp_open_channel(struct utcp_fd* fd, int ChIndex);
-void utcp_close_channel(struct utcp_fd* fd, int ChIndex);
-void utcp_closeall_channel(struct utcp_fd* fd);
-
 struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutReliable);
 void free_utcp_channel(struct utcp_channel* utcp_channel);
 

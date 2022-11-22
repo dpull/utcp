@@ -1,4 +1,4 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 

@@ -9,7 +9,7 @@ ds_connection::ds_connection() : utcp_connection(false)
 {
 }
 
-void ds_connection::on_recv(const struct utcp_bunch* bunches[], int count)
+void ds_connection::on_recv( struct utcp_bunch* const bunches[], int count)
 {
 	assert(count == 1);
 	if (bunches[0]->DataBitsLen == 0)

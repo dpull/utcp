@@ -60,7 +60,7 @@ void utcp_connection::config_utcp()
 		assert(&conn->utcp == fd);
 		conn->on_raw_send(data, len);
 	};
-	config->on_recv = [](struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count) {
+	config->on_recv = [](struct utcp_fd* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
 		auto conn = static_cast<utcp_connection*>(userdata);
 		assert(&conn->utcp == fd);
 		conn->on_recv(bunches, count);

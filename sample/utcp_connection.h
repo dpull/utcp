@@ -1,5 +1,6 @@
 #pragma once
 #include "socket.h"
+#include "utcp/utcp_def.h"
 #include "utcp/utcp.h"
 #include <cstdio>
 #include <mutex>
@@ -72,7 +73,7 @@ protected:
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;
 	virtual void on_raw_send(const void* data, int len);
-	virtual void on_recv(const struct utcp_bunch* bunches[], int count) DISABLE_FUNCTION;
+	virtual void on_recv(struct utcp_bunch* const bunches[], int count) DISABLE_FUNCTION;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) DISABLE_FUNCTION;
 
   private:

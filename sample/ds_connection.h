@@ -73,7 +73,7 @@ class ds_connection : public utcp_connection
 	ds_connection();
 
   protected:
-	virtual void on_recv(const struct utcp_bunch* bunches[], int count) override;
+	virtual void on_recv(struct utcp_bunch* const bunches[], int count) override;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) override;
 
   private:

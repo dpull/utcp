@@ -1,6 +1,6 @@
-﻿#include "gtest/gtest.h"
+#include "gtest/gtest.h"
 
-TEST(sha1, binary_find)
+TEST(sha1, test)
 {
 	ASSERT_FALSE(false);
 }

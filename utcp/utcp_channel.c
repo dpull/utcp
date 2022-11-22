@@ -4,38 +4,6 @@
 #include <assert.h>
 #include <string.h>
 
-
-struct utcp_channel* utcp_get_channel(struct utcp_fd* fd, int ChIndex)
-{
-	return fd->Channels[ChIndex];
-}
-
-struct utcp_channel* utcp_open_channel(struct utcp_fd* fd, int ChIndex)
-{
-	assert(!fd->Channels[ChIndex]);
-	fd->Channels[ChIndex] = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
-	return fd->Channels[ChIndex];
-}
-
-void utcp_close_channel(struct utcp_fd* fd, int ChIndex)
-{
-	if (!fd->Channels[ChIndex])
-		return;
-	free_utcp_channel(fd->Channels[ChIndex]);
-	fd->Channels[ChIndex] = NULL;
-}
-
-void utcp_closeall_channel(struct utcp_fd* fd)
-{
-	for (int i = 0; i < _countof(fd->Channels); ++i)
-	{
-		if (fd->Channels[i])
-		{
-			utcp_close_channel(fd, i);
-		}
-	}
-}
-
 struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutReliable)
 {
 	struct utcp_channel* utcp_channel = (struct utcp_channel*)utcp_realloc(NULL, sizeof(*utcp_channel));

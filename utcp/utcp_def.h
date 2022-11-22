@@ -13,13 +13,16 @@ extern "C" {
 #include "utcp_bunch_def.h"
 #include "utcp_packet_notify_def.h"
 
-#define HANDSHAKE_PACKET_SIZE_BITS 227
-#define RESTART_HANDSHAKE_PACKET_SIZE_BITS 2
-#define RESTART_RESPONSE_SIZE_BITS 387
-
-#define SECRET_BYTE_SIZE 64
-#define SECRET_COUNT 2
-#define COOKIE_BYTE_SIZE 20
+enum
+{
+	PACKET_ID_INDEX_NONE = -1,
+	HANDSHAKE_PACKET_SIZE_BITS = 227,
+	RESTART_HANDSHAKE_PACKET_SIZE_BITS = 2,
+	RESTART_RESPONSE_SIZE_BITS = 387,
+	SECRET_BYTE_SIZE = 64,
+	SECRET_COUNT = 2,
+	COOKIE_BYTE_SIZE = 20,
+};
 
 #define SECRET_UPDATE_TIME 15.f
 #define SECRET_UPDATE_TIME_VARIANCE 5.f
@@ -29,17 +32,6 @@ extern "C" {
 
 // The minimum amount of possible time a cookie may exist (for calculating when the clientside should timeout a challenge response)
 #define MIN_COOKIE_LIFETIME SECRET_UPDATE_TIME
-
-enum
-{
-	PACKET_ID_INDEX_NONE = -1,
-};
-
-struct packet_id_range
-{
-	int32_t First;
-	int32_t Last;
-};
 
 enum utcp_state
 {
