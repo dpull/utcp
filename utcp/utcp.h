@@ -1,8 +1,7 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "utcp_def.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -10,6 +9,7 @@ extern "C" {
 #endif
 
 struct utcp_fd;
+struct utcp_bunch;
 
 struct utcp_config* utcp_get_config();
 void utcp_add_time(int64_t delta_time_ns);

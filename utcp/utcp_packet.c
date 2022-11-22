@@ -1,12 +1,12 @@
-﻿#include "utcp_packet.h"
+#include "utcp_packet.h"
 #include "bit_buffer.h"
 #include "utcp.h"
 #include "utcp_bunch.h"
-#include "utcp_bunch_data.h"
 #include "utcp_handshake.h"
 #include "utcp_packet_notify.h"
 #include "utcp_utils.h"
 #include <assert.h>
+#include "utcp_channel.h"
 
 enum
 {
@@ -20,22 +20,6 @@ enum
 	MaxPacketHandlerBits = 2,
 	MAX_SINGLE_BUNCH_SIZE_BITS = (UTCP_MAX_PACKET * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
 };
-
-static void check_bit(struct bitbuf* bitbuf, uint8_t exp)
-{
-	uint8_t val;
-	if (!bitbuf_read_bit(bitbuf, &val))
-		assert(false);
-	assert(val == exp);
-}
-
-static void check_int(struct bitbuf* bitbuf, uint32_t exp)
-{
-	uint32_t val;
-	if (!bitbuf_read_int_packed(bitbuf, &val))
-		assert(false);
-	assert(val == exp);
-}
 
 static inline int32_t BestSignedDifference(int32_t Value, int32_t Reference, int32_t Max)
 {
@@ -75,20 +59,23 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	bool bPartial = utcp_bunch->bPartial;
 	if (bPartial)
 	{
-		int ret = merge_partial_data(&fd->utcp_bunch_data, utcp_bunch_node, bOutSkipAck);
-		if (ret == 0)
+		enum merge_partial_result ret = merge_partial_data(utcp_channel, utcp_bunch_node, bOutSkipAck);
+		if (ret == partial_merge_succeed)
 		{
 			return true;
 		}
-		else if (ret == 1)
+		else if (ret == partial_available)
 		{
-			HandleBunchCount = get_partial_bunch(&fd->utcp_bunch_data, HandleBunch, _countof(HandleBunch));
+			HandleBunchCount = get_partial_bunch(utcp_channel, HandleBunch, _countof(HandleBunch));
 			assert(HandleBunchCount > 0);
 		}
 		else
 		{
-			assert(ret == -1);
 			free_utcp_bunch_node(utcp_bunch_node);
+			if (ret == partial_merge_fatal)
+			{
+				// TODO close CONN
+			}
 			return false;
 		}
 	}
@@ -104,7 +91,7 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	if (bPartial)
 	{
 		assert(HandleBunchCount > 1);
-		clear_partial_data(&fd->utcp_bunch_data);
+		clear_partial_data(utcp_channel);
 	}
 	else
 	{
@@ -113,20 +100,41 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	return true;
 }
 
-static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
+// Dispatch any waiting bunches.
+static void DispatchWaitingBunches(struct utcp_fd* fd, struct utcp_channel* utcp_channel)
 {
-	struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(fd);
-	if (!utcp_bunch_node)
-		return -1;
+	for (;;)
+	{
+		assert(utcp_channel);
+		struct utcp_bunch_node* utcp_bunch_node = dequeue_incoming_data(utcp_channel, utcp_channel->InReliable + 1);
+		if (!utcp_bunch_node)
+			break;
 
-	int ret = 0;
+		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
+		// Definitely want to warn when this happens, since it's really not possible
+		bool bLocalSkipAck = false;
+		assert(utcp_bunch_node->dl_list_node.prev == NULL);
+		assert(utcp_bunch_node->dl_list_node.next == NULL);
+		ReceivedNextBunch(fd, utcp_bunch_node, &bLocalSkipAck);
+	}
+}
+
+static void ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
+{
+	struct utcp_bunch_node* utcp_bunch_node = NULL;
 	struct utcp_channel* utcp_channel = NULL;
+
 	do
 	{
+		utcp_bunch_node = alloc_utcp_bunch_node(fd);
+		if (!utcp_bunch_node)
+		{
+			break;
+		}
+
 		struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
 		if (!utcp_bunch_read(utcp_bunch, bitbuf))
 		{
-			ret = -2;
 			break;
 		}
 
@@ -134,11 +142,13 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		if (!utcp_channel)
 		{
 			if (utcp_bunch->bOpen)
+			{
 				utcp_channel = utcp_open_channel(fd, utcp_bunch->ChIndex);
+			}
 		}
+
 		if (!utcp_channel)
 		{
-			ret = -3;
 			break;
 		}
 
@@ -156,7 +166,7 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= utcp_channel->InReliable)
 		{
 			utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
-			continue;
+			break;
 		}
 
 		if (utcp_bunch->bReliable && utcp_bunch->ChSequence != utcp_channel->InReliable + 1)
@@ -175,8 +185,6 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		assert(utcp_bunch_node->dl_list_node.prev == NULL);
 		assert(utcp_bunch_node->dl_list_node.next == NULL);
 		ReceivedNextBunch(fd, utcp_bunch_node, bOutSkipAck);
-		assert(utcp_bunch_node->dl_list_node.prev != NULL);
-		assert(utcp_bunch_node->dl_list_node.next != NULL);
 		utcp_bunch_node = NULL;
 	} while (false);
 
@@ -188,23 +196,10 @@ static int ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOu
 		utcp_bunch_node = NULL;
 	}
 
-	while (true)
+	if (utcp_channel)
 	{
-		assert(utcp_channel);
-		utcp_bunch_node = dequeue_incoming_data(utcp_channel, utcp_channel->InReliable + 1);
-		if (!utcp_bunch_node)
-			break;
-		// Just keep a local copy of the bSkipAck flag, since these have already been acked and it doesn't make sense on this context
-		// Definitely want to warn when this happens, since it's really not possible
-		bool bLocalSkipAck = false;
-		assert(utcp_bunch_node->dl_list_node.prev == NULL);
-		assert(utcp_bunch_node->dl_list_node.next == NULL);
-		ReceivedNextBunch(fd, utcp_bunch_node, &bLocalSkipAck);
-		assert(utcp_bunch_node->dl_list_node.prev != NULL);
-		assert(utcp_bunch_node->dl_list_node.next != NULL);
-		utcp_bunch_node = NULL;
+		DispatchWaitingBunches(fd, utcp_channel);
 	}
-	return ret;
 }
 
 // UNetConnection::ReceivedPacket
@@ -225,7 +220,7 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 		uint32_t PacketJitterClockTimeMS = 0;
 		if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
 		{
-			return -2;
+			return -5;
 		}
 	}
 
@@ -257,8 +252,15 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
 	packet_notify_Update(fd, &fd->packet_notify, &notification_header);
 
-	// uint8_t bHasServerFrameTime;
-	check_bit(bitbuf, 0);
+	uint8_t bHasServerFrameTime;
+	if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
+		return -6;
+	
+	if (bHasServerFrameTime)
+	{
+		// TODO
+		assert(false);
+	}
 
 	bool bSkipAck = false;
 	while (bitbuf->num < bitbuf->size)
@@ -423,12 +425,13 @@ void WriteFinalPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 // UNetConnection::SendRawBunch
 int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 {
+	struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch->ChIndex);
+	assert(utcp_channel);
+
 	//  UChannel::PrepBunch
 	bunch->ChSequence = 0;
 	if (bunch->bReliable)
 	{
-		struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch->ChIndex);
-		assert(utcp_channel);
 		bunch->ChSequence = ++utcp_channel->OutReliable;
 	}
 
@@ -468,7 +471,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 
 		utcp_bunch_node->packet_id = PacketId;
 		utcp_bunch_node->bunch_data_len = (uint16_t)bitbuf_all.num;
-		add_ougoing_data(&fd->utcp_bunch_data, utcp_bunch_node);
+		add_ougoing_data(utcp_channel, utcp_bunch_node);
 	}
 
 	return PacketId;
@@ -478,5 +481,5 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 int WriteBitsToSendBuffer(struct utcp_fd* fd, char* buffer, int bits_len)
 {
 	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
-	return WriteBitsToSendBufferInternal(fd, NULL, 0, buffer, bits_len);
+	return WriteBitsToSendBufferInternal(fd, NULL, 0, (uint8_t*)buffer, bits_len);
 }

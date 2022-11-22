@@ -1,9 +1,9 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "bit_buffer.h"
-#include "utcp_bunch_data_def.h"
+#include "utcp_bunch_def.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

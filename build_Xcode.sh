@@ -8,8 +8,6 @@ fi
 
 cd build
 
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-
-make -j64
+cmake -GXcode ..
 
 cd -

@@ -1,6 +1,5 @@
-﻿#include "utcp_packet_notify.h"
+#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
-#include "utcp_bunch_data.h"
 #include "utcp_def.h"
 #include "utcp_packet.h"
 #include "utcp_sequence_number.h"
@@ -8,6 +7,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include "utcp_channel.h"
 
 static inline size_t MIN(size_t a, size_t b)
 {
@@ -73,12 +73,20 @@ static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 {
 	// Advance OutAckPacketId
 	fd->OutAckPacketId = AckPacketId;
-	
+
+	// TODO 不要全遍历
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	int count = remove_ougoing_data(&fd->utcp_bunch_data, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
-	for (int i = 0; i < count; ++i)
+	for (int i = 0; i < _countof(fd->Channels); ++i)
 	{
-		free_utcp_bunch_node(utcp_bunch_node[i]);
+		if (!fd->Channels[i])
+			continue;
+
+		struct utcp_channel* utcp_channel = fd->Channels[i];
+		int count = remove_ougoing_data(utcp_channel, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+		for (int i = 0; i < count; ++i)
+		{
+			free_utcp_bunch_node(utcp_bunch_node[i]);
+		}
 	}
 	utcp_delivery_status(fd, AckPacketId, true);
 }
@@ -86,17 +94,26 @@ static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 // UNetConnection::ReceivedNak
 static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
 {
-	// UChannel::ReceivedNak
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	int count = remove_ougoing_data(&fd->utcp_bunch_data, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
-	for (int i = 0; i < count; ++i)
+	for (int i = 0; i < _countof(fd->Channels); ++i)
 	{
-		int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
-		utcp_bunch_node[i]->packet_id = packet_id;
-		add_ougoing_data(&fd->utcp_bunch_data, utcp_bunch_node[i]);
+		if (!fd->Channels[i])
+			continue;
 
-		utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
+		// TODO 不要全遍历
+		// UChannel::ReceivedNak
+		struct utcp_channel* utcp_channel = fd->Channels[i];
+		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+		for (int i = 0; i < count; ++i)
+		{
+			int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+			utcp_bunch_node[i]->packet_id = packet_id;
+			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
+
+			utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
+		}
 	}
+
 	utcp_delivery_status(fd, NakPacketId, false);
 }
 

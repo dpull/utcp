@@ -1,11 +1,11 @@
-﻿#include "utcp.h"
+#include "utcp.h"
 #include "bit_buffer.h"
-#include "utcp_bunch_data.h"
 #include "utcp_handshake.h"
 #include "utcp_packet.h"
 #include "utcp_packet_notify.h"
 #include "utcp_sequence_number.h"
 #include "utcp_utils.h"
+#include "utcp_channel.h"
 #include <assert.h>
 #include <string.h>
 
@@ -29,7 +29,6 @@ void utcp_init(struct utcp_fd* fd, void* userdata, int is_client)
 	fd->userdata = userdata;
 	fd->mode = is_client ? Client : Server;
 	fd->ActiveSecret = 255;
-	init_utcp_bunch_data(&fd->utcp_bunch_data);
 }
 
 void utcp_uninit(struct utcp_fd* fd)

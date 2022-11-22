@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern struct utcp_config* utcp_get_config();
@@ -31,6 +32,15 @@ static inline void utcp_log(enum log_level level, const char* fmt, ...)
 		utcp_config->on_log(level, fmt, marker);
 		va_end(marker);
 	}
+}
+
+static inline void* utcp_realloc(void* ptr, size_t size)
+{
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (utcp_config->on_realloc)
+		return utcp_config->on_realloc(ptr, size);
+	else
+		return realloc(ptr, size);
 }
 
 static inline void utcp_dump(const char* type, int ext, const void* data, int len)

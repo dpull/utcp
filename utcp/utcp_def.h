@@ -1,4 +1,4 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,7 @@
 extern "C" {
 #endif
 
-#include "utcp_bunch_data_def.h"
-#include "utcp_channel.h"
+#include "utcp_bunch_def.h"
 #include "utcp_packet_notify_def.h"
 
 #define HANDSHAKE_PACKET_SIZE_BITS 227
@@ -136,17 +135,16 @@ struct utcp_fd
 	size_t HeaderMarkForPacketInfo;
 
 	uint8_t AllowMerge; // Whether to allow merging.
-
-	struct utcp_bunch_data utcp_bunch_data;
 };
 
 struct utcp_config
 {
 	void (*on_accept)(struct utcp_fd* fd, void* userdata, bool reconnect);
 	void (*on_raw_send)(struct utcp_fd* fd, void* userdata, const void* data, int len);
-	void (*on_recv)(struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count);
+	void (*on_recv)(struct utcp_fd* fd, void* userdata, struct utcp_bunch  * const bunches[], int count);
 	void (*on_delivery_status)(struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack);
 	void (*on_log)(int level, const char* msg, va_list args);
+	void* (*on_realloc)(void* ptr, size_t size);
 
 	int64_t ElapsedTime;
 	uint32_t MagicHeader;

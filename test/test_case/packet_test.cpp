@@ -1,4 +1,4 @@
-﻿#include "utcp/utcp.h"
+#include "utcp/utcp.h"
 #include "utcp/utcp_def.h"
 #include "gtest/gtest.h"
 #include <memory>
@@ -15,7 +15,7 @@ struct packet : public ::testing::Test
 
 		auto config = utcp_get_config();
 		config->on_raw_send = [](struct utcp_fd* fd, void* userdata, const void* data, int len) { last_send.insert(last_send.end(), (const char*)data, (const char*)data + len); };
-		config->on_recv = [](struct utcp_fd* fd, void* userdata, const struct utcp_bunch* bunches[], int count) {
+		config->on_recv = [](struct utcp_fd* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
 			for (int i = 0; i < count; ++i)
 			{
 				last_recv.push_back(*bunches[i]);

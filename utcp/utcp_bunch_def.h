@@ -66,15 +66,16 @@ struct utcp_bunch_node
 	};
 };
 
-struct utcp_bunch_data
+struct utcp_channel
 {
-	struct utcp_bunch_node cache[BUNCH_NODE_CACHE_MAX_SIZE];
-	struct dl_list_node free_list;
+	struct dl_list_node InPartialBunch;
 
 	struct dl_list_node InRec;
-	struct dl_list_node InPartialBunch;
 	struct dl_list_node OutRec;
 
 	int32_t NumInRec;  // Number of packets in InRec.
 	int32_t NumOutRec; // Number of packets in OutRec.
+
+	int32_t OutReliable;
+	int32_t InReliable;
 };
