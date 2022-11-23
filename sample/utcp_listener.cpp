@@ -13,173 +13,99 @@ static bool sockaddr2str(sockaddr_in* addr, char ipstr[], int size)
 	return true;
 }
 
-utcp_listener::utcp_listener() : utcp_connection(false)
+udp_utcp_listener::udp_utcp_listener() 
 {
 }
 
-utcp_listener::~utcp_listener()
+udp_utcp_listener::~udp_utcp_listener()
 {
-	recv_thread_exit_flag = true;
-	if (recv_thread)
-	{
-		recv_thread->join();
-		delete recv_thread;
-	}
-
-	if (socket_fd != INVALID_SOCKET)
-	{
-		closesocket(socket_fd);
-	}
-
-	for (auto view : recv_queue)
-	{
-		delete view;
-	}
-
-	assert(proc_queue.size() == 0);
+	
 }
 
-bool utcp_listener::listen(const char* ip, int port)
+bool udp_utcp_listener::listen(const char* ip, int port)
 {
-	assert(socket_fd == INVALID_SOCKET);
-	assert(!recv_thread);
-
-	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (socket_fd == INVALID_SOCKET)
-		return false;
-
-	int one = 1;
-	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one)) == SOCKET_ERROR)
-		return false;
-
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	struct sockaddr_in* addripv4 = (struct sockaddr_in*)&dest_addr;
-	addripv4->sin_family = AF_INET;
-	addripv4->sin_addr.s_addr = inet_addr(ip);
-	addripv4->sin_port = htons(port);
-	dest_addr_len = sizeof(*addripv4);
-
-	if (bind(socket_fd, (struct sockaddr*)&dest_addr, dest_addr_len) == SOCKET_ERROR)
-		return false;
-
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	dest_addr_len = 0;
-
-	create_recv_thread();
 	now = std::chrono::high_resolution_clock::now();
-	return true;
+	return socket.connnect(ip, port);
 }
 
-void utcp_listener::create_recv_thread()
-{
-	recv_thread_exit_flag = false;
-
-	recv_thread = new std::thread([this]() {
-		struct sockaddr_storage from_addr;
-		uint8_t buffer[UTCP_MAX_PACKET * 2];
-
-		while (!this->recv_thread_exit_flag)
-		{
-			socklen_t addr_len = sizeof(from_addr);
-			ssize_t ret = ::recvfrom(socket_fd, (char*)buffer, sizeof(buffer), 0, (struct sockaddr*)&from_addr, &addr_len);
-			if (ret <= 0)
-				continue;
-			proc_recv(buffer, (int)ret, &from_addr, addr_len);
-		}
-	});
-}
-
-void utcp_listener::proc_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len)
-{
-	auto view = new utcp_packet_view;
-	view->handle = 0;
-	memcpy(view->data, data, data_len);
-	view->data_len = data_len;
-	memcpy(&view->from_addr, from_addr, from_addr_len);
-	view->from_addr_len = from_addr_len;
-
-	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_queue.push_back(view);
-	}
-}
-
-void utcp_listener::proc_recv_queue()
-{
-	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_queue.swap(proc_queue);
-	}
-
-	char ipstr[NI_MAXHOST + 8];
-	for (auto view : proc_queue)
-	{
-		assert(view->from_addr_len == sizeof(sockaddr_in));
-		auto it = clients.find(*(sockaddr_in*)&view->from_addr);
-		if (it != clients.end())
-		{
-			it->second->raw_recv(view);
-			continue;
-		}
-
-		if (sockaddr2str((sockaddr_in*)&view->from_addr, ipstr, sizeof(ipstr)))
-		{
-			dest_addr_len = view->from_addr_len;
-			memcpy(&dest_addr, &view->from_addr, dest_addr_len);
-			utcp_connectionless_incoming(&utcp, ipstr, view->data, view->data_len);
-		}
-		delete view;
-		dest_addr_len = 0;
-	}
-	proc_queue.clear();
-}
-
-void utcp_listener::tick()
+void udp_utcp_listener::tick()
 {
 	auto cur_now = std::chrono::high_resolution_clock::now();
-	utcp_add_time((cur_now - now).count());
+	add_elapsed_time((cur_now - now).count());
 	now = cur_now;
 
-	utcp_update(&utcp);
-
 	proc_recv_queue();
 	for (auto& it : clients)
 	{
-		it.second->tick();
+		it.second->update();
 	}
 }
 
-void utcp_listener::after_tick()
+void udp_utcp_listener::post_tick()
 {
 	proc_recv_queue();
 	for (auto& it : clients)
 	{
-		it.second->after_tick();
+		it.second->flush_incoming_cache();
+		it.second->send_flush();
 	}
 }
 
-void utcp_listener::on_accept(bool reconnect)
+void udp_utcp_listener::on_accept(bool reconnect)
 {
-	utcp_connection* conn = nullptr;
+	utcp::conn* conn = nullptr;
 	if (!reconnect)
 	{
-		conn = new ds_connection();
+		conn = new utcp::conn;
 	}
 	else
 	{
+		auto auth_cookie = get_auth_cookie();
+		if (!auth_cookie)
+			return;
+
 		for (auto it = clients.begin(); it != clients.end(); ++it)
 		{
-			if (it->second->is_cookie_equal(this))
+			if (it->second->same_auth_cookie(auth_cookie))
 			{
 				conn = it->second;
 				clients.erase(it);
 				break;
 			}
 		}
+
+		if (!conn)
+			return;
 	}
 
-	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&dest_addr, conn));
+	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&socket.dest_addr, conn));
 	assert(it.second);
+	accept(conn, reconnect);
+}
 
-	this->accept(conn, reconnect);
+void udp_utcp_listener::proc_recv_queue()
+{
+	auto& proc_queue = socket.swap();
+	char ipstr[NI_MAXHOST + 8];
+
+	for (auto& datagram : proc_queue)
+	{
+		assert(datagram.from_addr_len == sizeof(sockaddr_in));
+		auto it = clients.find(*(sockaddr_in*)&datagram.from_addr);
+		if (it != clients.end())
+		{
+			it->second->incoming(datagram.data, datagram.data_len);
+			continue;
+		}
+
+		if (sockaddr2str((sockaddr_in*)&datagram.from_addr, ipstr, sizeof(ipstr)))
+		{
+			socket.dest_addr_len = datagram.from_addr_len;
+			memcpy(&socket.dest_addr, &datagram.from_addr, socket.dest_addr_len);
+			incoming(ipstr, datagram.data, datagram.data_len);
+		}
+		socket.dest_addr_len = 0;
+	}
+
+	proc_queue.clear();
 }

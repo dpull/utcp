@@ -13,11 +13,15 @@
 
 static struct utcp_config utcp_config = {0};
 
-void utcp_add_time(int64_t delta_time_ns)
+struct utcp_config* utcp_get_config()
+{
+	return &utcp_config;
+}
+
+void utcp_add_elapsed_time(int64_t delta_time_ns)
 {
 	utcp_config.ElapsedTime += (delta_time_ns / 1000);
 }
-
 
 void utcp_listener_init(struct utcp_listener* fd, void* userdata)
 {
@@ -65,34 +69,6 @@ void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secre
 	}
 }
 
-void utcp_listener_accept(struct utcp_listener* fd, struct utcp_connection* conn, bool reconnect)
-{
-}
-
-struct utcp_config* utcp_get_config()
-{
-	return &utcp_config;
-}
-
-void utcp_init(struct utcp_connection* fd, void* userdata, int is_client)
-{
-	memset(fd, 0, sizeof(*fd));
-	fd->userdata = userdata;
-	fd->mode = is_client ? Client : Server;
-}
-
-void utcp_uninit(struct utcp_connection* fd)
-{
-	utcp_closeall_channel(fd);
-}
-
-void utcp_connect(struct utcp_connection* fd)
-{
-	assert(fd->mode == Client);
-	fd->bBeganHandshaking = true;
-	NotifyHandshakeBegin(fd);
-}
-
 // UIpNetDriver::ProcessConnectionlessPacket
 int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len)
 {
@@ -135,25 +111,43 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 	return 0;
 }
 
-// UNetConnection::InitSequence
-void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
+void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
-	fd->InPacketId = IncomingSequence - 1;
-	fd->OutPacketId = OutgoingSequence;
-	fd->OutAckPacketId = OutgoingSequence - 1;
-	fd->LastNotifiedPacketId = fd->OutAckPacketId;
+	memcpy(conn->LastChallengeSuccessAddress, listener->LastChallengeSuccessAddress, sizeof(conn->LastChallengeSuccessAddress));
 
-	// Initialize the reliable packet sequence (more useful/effective at preventing attacks)
-	fd->InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
-	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+	if (!reconnect)
+	{
+		assert(conn->mode == ModeUnInitialized);
+		conn->mode = Server;
 
-	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
+		memcpy(conn->AuthorisedCookie, listener->AuthorisedCookie, sizeof(conn->AuthorisedCookie));
+		utcp_sequence_init(conn, listener->LastClientSequence, listener->LastServerSequence);
+	}
+}
+
+void utcp_init(struct utcp_connection* fd, void* userdata)
+{
+	memset(fd, 0, sizeof(*fd));
+	fd->userdata = userdata;
+}
+
+void utcp_uninit(struct utcp_connection* fd)
+{
+	utcp_closeall_channel(fd);
+}
+
+void utcp_connect(struct utcp_connection* fd)
+{
+	assert(fd->mode == ModeUnInitialized);
+	fd->mode = Client;
+	fd->bBeganHandshaking = true;
+	NotifyHandshakeBegin(fd);
 }
 
 // ReceivedRawPacket
 // PacketHandler
 // StatelessConnectHandlerComponent::Incoming
-int utcp_ordered_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
+int utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
 	utcp_dump("ordered_incoming", 0, buffer, len);
 
@@ -253,7 +247,7 @@ int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 }
 
 // UNetConnection::FlushNet
-int utcp_flush(struct utcp_connection* fd)
+int utcp_send_flush(struct utcp_connection* fd)
 {
 	int64_t now = utcp_gettime_ms();
 	if (fd->SendBufferBitsNum == 0 && !fd->HasDirtyAcks && (now - fd->LastSendTime) < KeepAliveTime)
@@ -276,7 +270,7 @@ int utcp_flush(struct utcp_connection* fd)
 	WriteFinalPacketInfo(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;

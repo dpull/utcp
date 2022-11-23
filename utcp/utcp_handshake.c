@@ -1,6 +1,7 @@
 ﻿#include "utcp_handshake.h"
 #include "bit_buffer.h"
 #include "utcp.h"
+#include "utcp_packet.h"
 #include "utcp_sequence_number.h"
 #include "utcp_utils.h"
 #include <assert.h>
@@ -13,65 +14,101 @@ enum
 };
 
 static inline int32_t GetAdjustedSizeBits(int32_t InSizeBits)
-{ // return MagicHeader.Num() + InSizeBits;
-	return 0 + InSizeBits;
+{
+	struct utcp_config* utcp_config = utcp_get_config();
+	return utcp_config->MagicHeaderBits + InSizeBits;
 }
 
 // StatelessConnectHandlerComponent::GenerateCookie
 static void GenerateCookie(struct utcp_listener* fd, const char* ClientAddress, uint8_t SecretId, double Timestamp, uint8_t* OutCookie)
 {
-	if (!try_use_debug_cookie(OutCookie))
-	{
-		// ClientAddress
-		// TODO Need FSHA1::HMACBuffer
-		memcpy(OutCookie, fd->HandshakeSecret[!!SecretId], COOKIE_BYTE_SIZE);
-	}
+	// ClientAddress
+	// TODO Need FSHA1::HMACBuffer
+	memcpy(OutCookie, fd->HandshakeSecret[!!SecretId], COOKIE_BYTE_SIZE);
 }
 
-// StatelessConnectHandlerComponent::CapHandshakePacket
-void CapHandshakePacket(struct bitbuf* bitbuf)
+// StatelessConnectHandlerComponent::SendConnectChallenge
+static void SendConnectChallenge(struct utcp_listener* fd, const char* address)
 {
-	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(0);
-	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
-	// Add a termination bit, the same as the UNetConnection code does
-	bitbuf_write_end(bitbuf);
-}
-
-// StatelessConnectHandlerComponent::NotifyHandshakeBegin
-void NotifyHandshakeBegin(struct utcp_connection* fd)
-{
-	if (fd->mode != Client)
-		return;
-
-	// GetAdjustedSizeBits(fd, HANDSHAKE_PACKET_SIZE_BITS) + 1
+	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
 	uint8_t buffer[UTCP_MAX_PACKET];
 	struct bitbuf bitbuf;
 	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
 		return;
 
-	write_magic_header(&bitbuf);
-
 	uint8_t bHandshakePacket = 1;
-	// In order to prevent DRDoS reflection amplification attacks, clients must pad the packet to match server packet size
-	uint8_t bRestartHandshake = fd->bRestartedHandshake ? 1 : 0;
-	uint8_t SecretIdPad = 0;
-	uint8_t PacketSizeFiller[28];
+	uint8_t bRestartHandshake = 0; // Ignored clientside
+	double Timestamp = utcp_gettime();
+	uint8_t Cookie[COOKIE_BYTE_SIZE];
+
+	GenerateCookie(fd, address, fd->ActiveSecret, Timestamp, Cookie);
+
+	write_magic_header(&bitbuf);
 
 	bitbuf_write_bit(&bitbuf, bHandshakePacket);
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
-	bitbuf_write_bit(&bitbuf, SecretIdPad);
-
-	memset(PacketSizeFiller, 0, sizeof(PacketSizeFiller));
-	bitbuf_write_bytes(&bitbuf, PacketSizeFiller, sizeof(PacketSizeFiller));
+	bitbuf_write_bit(&bitbuf, fd->ActiveSecret);
+	bitbuf_write_bytes(&bitbuf, &Timestamp, sizeof(Timestamp));
+	bitbuf_write_bytes(&bitbuf, Cookie, sizeof(Cookie));
 
 	CapHandshakePacket(&bitbuf);
 
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
-	fd->LastClientSendTimestamp = utcp_gettime_ms();
+	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
-static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie,
-								 uint8_t* OutOrigCookie)
+// StatelessConnectHandlerComponent::SendRestartHandshakeRequest
+static void SendRestartHandshakeRequest(struct utcp_listener* fd)
+{
+	// GetAdjustedSizeBits(RESTART_HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
+	uint8_t buffer[UTCP_MAX_PACKET];
+	struct bitbuf bitbuf;
+	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
+		return;
+
+	uint8_t bHandshakePacket = 1;
+	uint8_t bRestartHandshake = 1;
+
+	write_magic_header(&bitbuf);
+
+	bitbuf_write_bit(&bitbuf, bHandshakePacket);
+	bitbuf_write_bit(&bitbuf, bRestartHandshake);
+
+	CapHandshakePacket(&bitbuf);
+
+	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+}
+
+// StatelessConnectHandlerComponent::SendChallengeAck
+static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_connection* fd, uint8_t InCookie[COOKIE_BYTE_SIZE])
+{
+	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
+	uint8_t buffer[UTCP_MAX_PACKET];
+	struct bitbuf bitbuf;
+	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
+		return;
+
+	uint8_t bHandshakePacket = 1;
+	uint8_t bRestartHandshake = 0; // Ignored clientside
+	double Timestamp = -1.0;
+
+	write_magic_header(&bitbuf);
+
+	bitbuf_write_bit(&bitbuf, bHandshakePacket);
+	bitbuf_write_bit(&bitbuf, bRestartHandshake);
+	bitbuf_write_bit(&bitbuf, bHandshakePacket); // ActiveSecret
+
+	bitbuf_write_bytes(&bitbuf, &Timestamp, sizeof(Timestamp));
+	bitbuf_write_bytes(&bitbuf, InCookie, COOKIE_BYTE_SIZE);
+
+	CapHandshakePacket(&bitbuf);
+
+	if (listener_fd)
+		utcp_outgoing(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	else
+		utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+}
+
+static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie)
 {
 	bool bValidPacket = false;
 	size_t BitsLeft = bitbuf->size - bitbuf->num;
@@ -110,85 +147,24 @@ static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHand
 	return bValidPacket;
 }
 
-// StatelessConnectHandlerComponent::SendConnectChallenge
-static void SendConnectChallenge(struct utcp_listener* fd, const char* address)
+// StatelessConnectHandlerComponent::CapHandshakePacket
+void CapHandshakePacket(struct bitbuf* bitbuf)
 {
-	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[UTCP_MAX_PACKET];
-	struct bitbuf bitbuf;
-	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
-		return;
-
-	uint8_t bHandshakePacket = 1;
-	uint8_t bRestartHandshake = 0; // Ignored clientside
-	double Timestamp = utcp_gettime();
-	uint8_t Cookie[COOKIE_BYTE_SIZE];
-
-	GenerateCookie(fd, address, fd->ActiveSecret, Timestamp, Cookie);
-
-	write_magic_header(&bitbuf);
-
-	bitbuf_write_bit(&bitbuf, bHandshakePacket);
-	bitbuf_write_bit(&bitbuf, bRestartHandshake);
-	bitbuf_write_bit(&bitbuf, fd->ActiveSecret);
-	bitbuf_write_bytes(&bitbuf, &Timestamp, sizeof(Timestamp));
-	bitbuf_write_bytes(&bitbuf, Cookie, sizeof(Cookie));
-
-	CapHandshakePacket(&bitbuf);
-
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(0);
+	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
+	// Add a termination bit, the same as the UNetConnection code does
+	bitbuf_write_end(bitbuf);
 }
 
-// StatelessConnectHandlerComponent::SendRestartHandshakeRequest
-static void SendRestartHandshakeRequest(struct utcp_listener* fd)
+// StatelessConnectHandlerComponent::Outgoing
+int Outgoing(struct bitbuf* bitbuf)
 {
-	// GetAdjustedSizeBits(RESTART_HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[UTCP_MAX_PACKET];
-	struct bitbuf bitbuf;
-	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
-		return;
+	assert(bitbuf->num == 0);
+	write_magic_header(bitbuf);
 
-	uint8_t bHandshakePacket = 1;
-	uint8_t bRestartHandshake = 1;
-
-	write_magic_header(&bitbuf);
-
-	bitbuf_write_bit(&bitbuf, bHandshakePacket);
-	bitbuf_write_bit(&bitbuf, bRestartHandshake);
-
-	CapHandshakePacket(&bitbuf);
-
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
-}
-
-// StatelessConnectHandlerComponent::SendChallengeAck
-static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_connection* fd, uint8_t InCookie[COOKIE_BYTE_SIZE])
-{
-	// GetAdjustedSizeBits(HANDSHAKE_PACKET_SIZE_BITS) + 1 /* Termination bit */
-	uint8_t buffer[UTCP_MAX_PACKET];
-	struct bitbuf bitbuf;
-	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
-		return;
-
-	uint8_t bHandshakePacket = 1;
-	uint8_t bRestartHandshake = 0; // Ignored clientside
-	double Timestamp = -1.0;
-
-	write_magic_header(&bitbuf);
-
-	bitbuf_write_bit(&bitbuf, bHandshakePacket);
-	bitbuf_write_bit(&bitbuf, bRestartHandshake);
-	bitbuf_write_bit(&bitbuf, bHandshakePacket); // ActiveSecret
-
-	bitbuf_write_bytes(&bitbuf, &Timestamp, sizeof(Timestamp));
-	bitbuf_write_bytes(&bitbuf, InCookie, COOKIE_BYTE_SIZE);
-
-	CapHandshakePacket(&bitbuf);
-
-	if (listener_fd)
-		utcp_raw_send(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
-	else
-		utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	uint8_t bHandshakePacket = 0;
+	bitbuf_write_bit(bitbuf, bHandshakePacket);
+	return 0;
 }
 
 // StatelessConnectHandlerComponent::IncomingConnectionless
@@ -268,6 +244,54 @@ int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct
 	return -6;
 }
 
+bool HasPassedChallenge(struct utcp_listener* fd, const char* address, bool* bOutRestartedHandshake)
+{
+	*bOutRestartedHandshake = fd->bRestartedHandshake;
+	return strncmp(fd->LastChallengeSuccessAddress, address, sizeof(fd->LastChallengeSuccessAddress)) == 0;
+}
+
+void ResetChallengeData(struct utcp_listener* fd)
+{
+	fd->LastChallengeSuccessAddress[0] = '\0';
+	fd->bRestartedHandshake = false;
+	fd->LastServerSequence = 0;
+	fd->LastClientSequence = 0;
+	memset(fd->AuthorisedCookie, 0, COOKIE_BYTE_SIZE);
+}
+
+// StatelessConnectHandlerComponent::NotifyHandshakeBegin
+void NotifyHandshakeBegin(struct utcp_connection* fd)
+{
+	if (fd->mode != Client)
+		return;
+
+	// GetAdjustedSizeBits(fd, HANDSHAKE_PACKET_SIZE_BITS) + 1
+	uint8_t buffer[UTCP_MAX_PACKET];
+	struct bitbuf bitbuf;
+	if (!bitbuf_write_init(&bitbuf, buffer, sizeof(buffer)))
+		return;
+
+	write_magic_header(&bitbuf);
+
+	uint8_t bHandshakePacket = 1;
+	// In order to prevent DRDoS reflection amplification attacks, clients must pad the packet to match server packet size
+	uint8_t bRestartHandshake = fd->bRestartedHandshake ? 1 : 0;
+	uint8_t SecretIdPad = 0;
+	uint8_t PacketSizeFiller[28];
+
+	bitbuf_write_bit(&bitbuf, bHandshakePacket);
+	bitbuf_write_bit(&bitbuf, bRestartHandshake);
+	bitbuf_write_bit(&bitbuf, SecretIdPad);
+
+	memset(PacketSizeFiller, 0, sizeof(PacketSizeFiller));
+	bitbuf_write_bytes(&bitbuf, PacketSizeFiller, sizeof(PacketSizeFiller));
+
+	CapHandshakePacket(&bitbuf);
+
+	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	fd->LastClientSendTimestamp = utcp_gettime_ms();
+}
+
 // StatelessConnectHandlerComponent::SendChallengeResponse
 void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE])
 {
@@ -297,7 +321,7 @@ void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, doubl
 	}
 
 	CapHandshakePacket(&bitbuf);
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	int16_t* CurSequence = (int16_t*)InCookie;
 
@@ -308,21 +332,6 @@ void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, doubl
 	fd->LastClientSequence = *(CurSequence + 1) & (MAX_PACKETID - 1);
 
 	memcpy(fd->LastCookie, InCookie, sizeof(fd->AuthorisedCookie));
-}
-
-bool HasPassedChallenge(struct utcp_listener* fd, const char* address, bool* bOutRestartedHandshake)
-{
-	*bOutRestartedHandshake = fd->bRestartedHandshake;
-	return strncmp(fd->LastChallengeSuccessAddress, address, sizeof(fd->LastChallengeSuccessAddress)) == 0;
-}
-
-void ResetChallengeData(struct utcp_listener* fd)
-{
-	fd->LastChallengeSuccessAddress[0] = '\0';
-	fd->bRestartedHandshake = false;
-	fd->LastServerSequence = 0;
-	fd->LastClientSequence = 0;
-	memset(fd->AuthorisedCookie, 0, COOKIE_BYTE_SIZE);
 }
 
 // void StatelessConnectHandlerComponent::Incoming(FBitReader& Packet)
@@ -477,13 +486,17 @@ int Incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	return 0;
 }
 
-// StatelessConnectHandlerComponent::Outgoing
-int Outgoing(struct bitbuf* bitbuf)
+// UNetConnection::InitSequence
+void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
 {
-	assert(bitbuf->num == 0);
-	write_magic_header(bitbuf);
+	fd->InPacketId = IncomingSequence - 1;
+	fd->OutPacketId = OutgoingSequence;
+	fd->OutAckPacketId = OutgoingSequence - 1;
+	fd->LastNotifiedPacketId = fd->OutAckPacketId;
 
-	uint8_t bHandshakePacket = 0;
-	bitbuf_write_bit(bitbuf, bHandshakePacket);
-	return 0;
+	// Initialize the reliable packet sequence (more useful/effective at preventing attacks)
+	fd->InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+
+	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
 }

@@ -5,7 +5,7 @@ extern "C" {
 #include <cassert>
 #include <cstring>
 
-ds_connection::ds_connection() : utcp_connection(false)
+ds_connection::ds_connection() : udp_utcp_connection(false)
 {
 }
 

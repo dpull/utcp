@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include "utcp_connection.h"
+#include "abstract/utcp.hpp"
 #include <unordered_map>
 #include <vector>
+#include "udp_socket.h"
 
 struct sockaddr_in_Hash
 {
@@ -22,37 +24,26 @@ struct sockaddr_in_Equal
 	}
 };
 
-class utcp_listener : public utcp_connection
+class udp_utcp_listener : public utcp::listener
 {
   public:
-	utcp_listener();
-	~utcp_listener();
+	udp_utcp_listener();
+	~udp_utcp_listener();
+
 	bool listen(const char* ip, int port);
 
-	virtual void tick() override;
-	virtual void after_tick() override;
-
-	virtual bool accept(utcp_connection* listener, bool reconnect) override DISABLE_FUNCTION;
-	virtual void raw_recv(utcp_packet_view* view) override DISABLE_FUNCTION;
-	virtual int send(struct utcp_bunch* bunch) override DISABLE_FUNCTION;
+	void tick();
+	void post_tick();
 
   protected:
 	virtual void on_accept(bool reconnect) override;
 
-	virtual void on_recv( struct utcp_bunch* const bunches[], int count) override DISABLE_FUNCTION;
-	virtual void on_delivery_status(int32_t packet_id, bool ack) override DISABLE_FUNCTION;
-
-	void create_recv_thread();
-	void proc_recv(uint8_t* data, int data_len, struct sockaddr_storage* from_addr, socklen_t from_addr_len);
+	utcp::conn* cache_erase_conn(const uint8_t* auth_cookie);
+	void cache_insert_conn(utcp::conn* c);
 	void proc_recv_queue();
 
   private:
-	volatile int recv_thread_exit_flag = false;
-	std::thread* recv_thread = nullptr;
-	std::mutex recv_queue_mutex;
-	std::vector<utcp_packet_view*> recv_queue;
-	std::vector<utcp_packet_view*> proc_queue;
-
-	std::unordered_map<struct sockaddr_in, utcp_connection*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
 	std::chrono::time_point<std::chrono::high_resolution_clock> now;
+	udp_socket socket;
+	std::unordered_map<struct sockaddr_in, utcp::conn*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
 };

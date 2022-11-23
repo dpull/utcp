@@ -45,6 +45,10 @@ static inline void* utcp_realloc(void* ptr, size_t size)
 
 static inline void utcp_dump(const char* type, int ext, const void* data, int len)
 {
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (!utcp_config->EnableDump)
+		return;
+
 	char str[UTCP_MAX_PACKET * 8];
 	int size = 0;
 
@@ -86,47 +90,39 @@ static inline bool read_magic_header(struct bitbuf* bitbuf)
 	return MagicHeader == utcp_config->MagicHeader;
 }
 
-static inline bool try_use_debug_cookie(uint8_t* OutCookie)
-{
-	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->enable_debug_cookie)
-		memcpy(OutCookie, utcp_config->debug_cookie, sizeof(utcp_config->debug_cookie));
-	return utcp_config->enable_debug_cookie;
-}
-
 static inline int64_t utcp_gettime_ms(void)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
-	return utcp_config->ElapsedTime / 1000;
+	return utcp_config->ElapsedTime / 1000 + 1000;
 }
 
 static inline double utcp_gettime(void)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
-	return ((double)utcp_config->ElapsedTime) / 1000 / 1000 / 1000;
+	return ((double)utcp_config->ElapsedTime) / 1000 / 1000 / 1000 + 1;
 }
 
 static inline void utcp_listener_outgoing(struct utcp_listener* fd, const void* buffer, size_t len)
 {
-	utcp_dump("raw_send", 0, buffer, (int)len);
+	utcp_dump("listener outgoing", 0, buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->on_raw_send)
+	if (utcp_config->on_outgoing)
 	{
-		utcp_config->on_raw_send(NULL, fd->userdata, buffer, (int)len);
+		utcp_config->on_outgoing(fd, fd->userdata, buffer, (int)len);
 	}
 }
 
 static inline void utcp_connection_outgoing(struct utcp_connection* fd, const void* buffer, size_t len)
 {
-	utcp_dump("raw_send", 0, buffer, (int)len);
+	utcp_dump("connection outgoing", 0, buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->on_raw_send)
+	if (utcp_config->on_outgoing)
 	{
-		utcp_config->on_raw_send(fd, fd->userdata, buffer, (int)len);
+		utcp_config->on_outgoing(fd, fd->userdata, buffer, (int)len);
 	}
 }
 
-#define utcp_raw_send(fd, buffer, len) _Generic((fd), struct utcp_listener * : utcp_listener_outgoing, struct utcp_connection * : utcp_connection_outgoing)(fd, buffer, len)
+#define utcp_outgoing(fd, buffer, len) _Generic((fd), struct utcp_listener * : utcp_listener_outgoing, struct utcp_connection * : utcp_connection_outgoing)(fd, buffer, len)
 
 static inline void utcp_accept(struct utcp_listener* fd, bool reconnect)
 {
@@ -137,13 +133,13 @@ static inline void utcp_accept(struct utcp_listener* fd, bool reconnect)
 	}
 }
 
-static inline void utcp_recv(struct utcp_connection* fd, struct utcp_bunch* bunches[], int bunches_count)
+static inline void utcp_recv_bunch(struct utcp_connection* fd, struct utcp_bunch* bunches[], int bunches_count)
 {
 	assert(bunches_count > 0);
 	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->on_recv)
+	if (utcp_config->on_recv_bunch)
 	{
-		utcp_config->on_recv(fd, fd->userdata, bunches, bunches_count);
+		utcp_config->on_recv_bunch(fd, fd->userdata, bunches, bunches_count);
 	}
 }
 

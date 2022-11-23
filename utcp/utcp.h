@@ -12,28 +12,30 @@ struct utcp_listener;
 struct utcp_connection;
 struct utcp_bunch;
 
+// global API
 struct utcp_config* utcp_get_config();
-void utcp_add_time(int64_t delta_time_ns);
+void utcp_add_elapsed_time(int64_t delta_time_ns);
 
+// listener API
 void utcp_listener_init(struct utcp_listener* fd, void* userdata);
 void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secret[64] /* = NULL*/);
 int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len);
-void utcp_listener_accept(struct utcp_listener* fd, struct utcp_connection* conn, bool reconnect);
+void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect);
 
-void utcp_init(struct utcp_connection* fd, void* userdata, int is_client);
+// connection API
+void utcp_init(struct utcp_connection* fd, void* userdata);
 void utcp_uninit(struct utcp_connection* fd);
 
 void utcp_connect(struct utcp_connection* fd);
-void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence);
 
-int utcp_ordered_incoming(struct utcp_connection* fd, uint8_t* buffer, int len);
+int utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len);
 int utcp_update(struct utcp_connection* fd);
 
 int32_t utcp_peep_packet_id(struct utcp_connection* fd, uint8_t* buffer, int len);
 int32_t utcp_expect_packet_id(struct utcp_connection* fd);
 
 int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch);
-int utcp_flush(struct utcp_connection* fd);
+int utcp_send_flush(struct utcp_connection* fd);
 
 #ifdef __cplusplus
 }

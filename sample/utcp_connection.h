@@ -51,15 +51,15 @@ struct utcp_packet_view_ordered_queue
 	std::priority_queue<utcp_packet_view*, std::vector<utcp_packet_view*>, utcp_packet_view> queue;
 };
 
-class utcp_connection
+class udp_utcp_connection
 {
   public:
 	static void config_utcp();
 
-	utcp_connection(bool is_client);
-	virtual ~utcp_connection();
+	udp_utcp_connection(bool is_client);
+	virtual ~udp_utcp_connection();
 
-	virtual bool is_cookie_equal(utcp_connection* listener);
+	virtual bool is_cookie_equal(udp_utcp_connection* listener);
 
 	virtual void tick();
 	virtual void after_tick();
@@ -68,7 +68,7 @@ class utcp_connection
 	virtual int send(struct utcp_bunch* bunch);
 
 protected:
-	virtual bool accept(utcp_connection* connection, bool reconnect);
+	virtual bool accept(udp_utcp_connection* connection, bool reconnect);
 
   protected:
 	virtual void on_accept(bool reconnect) DISABLE_FUNCTION;
@@ -85,7 +85,7 @@ protected:
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_addr_len = 0;
 
-	utcp_fd utcp;
+	utcp_connection utcp;
 
 	utcp_packet_view_ordered_queue* ordered_cache = nullptr;
 };

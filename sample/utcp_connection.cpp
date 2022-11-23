@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 
+
+
 #ifdef _MSC_VER
 struct WSAGuard
 {
@@ -47,44 +49,37 @@ void log(const char* fmt, ...)
 	va_end(marker);
 }
 
-void utcp_connection::config_utcp()
+void udp_utcp_connection::config_utcp()
 {
 	auto config = utcp_get_config();
-	config->on_accept = [](struct utcp_fd* fd, void* userdata, bool reconnect) {
-		auto conn = static_cast<utcp_connection*>(userdata);
-		assert(&conn->utcp == fd);
+	config->on_accept = [](struct utcp_listener* fd, void* userdata, bool reconnect) {
+		auto conn = static_cast<udp_utcp_connection*>(userdata);
 		conn->on_accept(reconnect);
 	};
-	config->on_raw_send = [](struct utcp_fd* fd, void* userdata, const void* data, int len) {
-		auto conn = static_cast<utcp_connection*>(userdata);
+	config->on_outgoing = [](void* fd, void* userdata, const void* data, int len) {
+		auto conn = static_cast<udp_utcp_connection*>(userdata);
 		assert(&conn->utcp == fd);
 		conn->on_raw_send(data, len);
 	};
-	config->on_recv = [](struct utcp_fd* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
-		auto conn = static_cast<utcp_connection*>(userdata);
+	config->on_recv_bunch = [](struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
+		auto conn = static_cast<udp_utcp_connection*>(userdata);
 		assert(&conn->utcp == fd);
 		conn->on_recv(bunches, count);
 	};
-	config->on_delivery_status = [](struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack) {
-		auto conn = static_cast<utcp_connection*>(userdata);
+	config->on_delivery_status = [](struct utcp_connection* fd, void* userdata, int32_t packet_id, bool ack) {
+		auto conn = static_cast<udp_utcp_connection*>(userdata);
 		assert(&conn->utcp == fd);
 		conn->on_delivery_status(packet_id, ack);
 	};
 	config->on_log = [](int level, const char* msg, va_list args) { log(msg, args); };
-
-	config->enable_debug_cookie = true;
-	for (int i = 0; i < sizeof(config->debug_cookie); ++i)
-	{
-		config->debug_cookie[i] = i + 1;
-	}
 }
 
-utcp_connection::utcp_connection(bool is_client)
+udp_utcp_connection::udp_utcp_connection(bool is_client)
 {
-	utcp_init(&utcp, this, is_client);
+	utcp_init(&utcp, this);
 }
 
-utcp_connection::~utcp_connection()
+udp_utcp_connection::~udp_utcp_connection()
 {
 	if (ordered_cache)
 	{
@@ -92,7 +87,7 @@ utcp_connection::~utcp_connection()
 	}
 }
 
-bool utcp_connection::accept(utcp_connection* connection, bool reconnect)
+bool udp_utcp_connection::accept(udp_utcp_connection* connection, bool reconnect)
 {
 	memcpy(&connection->dest_addr, &this->dest_addr, connection->dest_addr_len);
 	connection->dest_addr_len = this->dest_addr_len;
@@ -107,36 +102,36 @@ bool utcp_connection::accept(utcp_connection* connection, bool reconnect)
 	if (!reconnect)
 	{
 		memcpy(connection->utcp.AuthorisedCookie, this->utcp.AuthorisedCookie, sizeof(utcp.AuthorisedCookie));
-		utcp_sequence_init(&connection->utcp, this->utcp.LastClientSequence, this->utcp.LastServerSequence);
+		// utcp_sequence_init(&connection->utcp, this->utcp.LastClientSequence, this->utcp.LastServerSequence);
 		log("accept:(%d, %d)", this->utcp.LastClientSequence, this->utcp.LastServerSequence);
 	}
 	return true;
 }
 
-bool utcp_connection::is_cookie_equal(utcp_connection* listener)
+bool udp_utcp_connection::is_cookie_equal(udp_utcp_connection* listener)
 {
 	return memcmp(utcp.AuthorisedCookie, listener->utcp.AuthorisedCookie, sizeof(utcp.AuthorisedCookie)) == 0;
 }
 
-void utcp_connection::tick()
+void udp_utcp_connection::tick()
 {
 	utcp_update(&utcp);
 	proc_ordered_cache(false);
 }
 
-void utcp_connection::after_tick()
+void udp_utcp_connection::after_tick()
 {
 	proc_ordered_cache(true);
-	utcp_flush(&utcp);
+	utcp_send_flush(&utcp);
 	log("utcp_flush");
 }
 
-void utcp_connection::raw_recv(utcp_packet_view* view)
+void udp_utcp_connection::raw_recv(utcp_packet_view* view)
 {
 	auto packet_id = utcp_peep_packet_id(&utcp, view->data, view->data_len);
 	if (packet_id <= 0)
 	{
-		utcp_ordered_incoming(&utcp, view->data, view->data_len);
+		utcp_incoming(&utcp, view->data, view->data_len);
 		delete view;
 		return;
 	}
@@ -148,12 +143,12 @@ void utcp_connection::raw_recv(utcp_packet_view* view)
 // > 0 packet id
 // = 0 send failed
 // < 0 tmp pocket id
-int utcp_connection::send(struct utcp_bunch* bunch)
+int udp_utcp_connection::send(struct utcp_bunch* bunch)
 {
 	return utcp_send_bunch(&utcp, bunch);
 }
 
-void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
+void udp_utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 {
 	while (true)
 	{
@@ -167,12 +162,12 @@ void utcp_connection::proc_ordered_cache(bool flushing_order_cache)
 		if (!view)
 			break;
 
-		utcp_ordered_incoming(&utcp, view->data, view->data_len);
+		utcp_incoming(&utcp, view->data, view->data_len);
 		delete view;
 	}
 }
 
-void utcp_connection::on_raw_send(const void* data, int len)
+void udp_utcp_connection::on_raw_send(const void* data, int len)
 {
 	assert(dest_addr_len > 0);
 	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);

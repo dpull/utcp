@@ -16,7 +16,7 @@ struct handshake : public ::testing::Test
 		last_send.clear();
 
 		auto config = utcp_get_config();
-		config->on_raw_send = [](struct utcp_connection* fd, void* userdata, const void* data, int len) {
+		config->on_outgoing = [](void* fd, void* userdata, const void* data, int len) {
 			last_send.insert(last_send.end(), (const uint8_t*)data, (const uint8_t*)data + len);
 		};
 		config->on_accept = [](struct utcp_listener* fd, void* userdata, bool reconnect) {
@@ -29,7 +29,7 @@ struct handshake : public ::testing::Test
 	virtual void TearDown() override
 	{
 		auto config = utcp_get_config();
-		config->on_raw_send = nullptr;
+		config->on_outgoing = nullptr;
 		config->on_accept = nullptr;
 	}
 };
@@ -37,7 +37,7 @@ struct handshake : public ::testing::Test
 TEST_F(handshake, accept)
 {
 	utcp_listener_rtti fd;
-	utcp_add_time(10 * 1000 * 1000);
+	utcp_add_elapsed_time(10 * 1000 * 1000);
 	utcp_listener_init(fd.get(), nullptr);
 
 	int ret = utcp_listener_incoming(fd.get(), "127.0.0.1:12345", handshake_step1, sizeof(handshake_step1));
@@ -45,7 +45,7 @@ TEST_F(handshake, accept)
 	ASSERT_EQ(last_send.size(), 29);
 	ASSERT_FALSE(new_conn);
 
-	utcp_add_time(10 * 1000 * 1000);
+	utcp_add_elapsed_time(10 * 1000 * 1000);
 
 	std::vector<uint8_t> send2 = last_send;
 	last_send.clear();
@@ -58,7 +58,7 @@ TEST_F(handshake, accept)
 TEST_F(handshake, client)
 {
 	utcp_fd_rtti fd;
-	utcp_init(fd.get(), nullptr, true);
+	utcp_init(fd.get(), nullptr);
 	utcp_connect(fd.get());
 	ASSERT_EQ(last_send.size(), sizeof(handshake_step1));
 	ASSERT_EQ(memcmp(handshake_step1, last_send.data(), last_send.size()), 0);

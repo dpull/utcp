@@ -43,6 +43,7 @@ enum utcp_state
 
 enum utcp_mode
 {
+	ModeUnInitialized,
 	Client, // Clientside PacketHandler
 	Server	// Serverside PacketHandler
 };
@@ -152,8 +153,8 @@ struct utcp_connection
 struct utcp_config
 {
 	void (*on_accept)(struct utcp_listener* fd, void* userdata, bool reconnect);
-	void (*on_raw_send)(struct utcp_connection* fd, void* userdata, const void* data, int len);
-	void (*on_recv)(struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count);
+	void (*on_outgoing)(void* fd, void* userdata, const void* data, int len); // "void* fd" is "struct utcp_listener* fd" or "struct utcp_connection* fd"
+	void (*on_recv_bunch)(struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count);
 	void (*on_delivery_status)(struct utcp_connection* fd, void* userdata, int32_t packet_id, bool ack);
 	void (*on_log)(int level, const char* msg, va_list args);
 	void* (*on_realloc)(void* ptr, size_t size);
@@ -161,8 +162,7 @@ struct utcp_config
 	int64_t ElapsedTime;
 	uint32_t MagicHeader;
 	uint8_t MagicHeaderBits;
-	uint8_t enable_debug_cookie;
-	uint8_t debug_cookie[COOKIE_BYTE_SIZE];
+	uint8_t EnableDump;
 };
 
 #ifdef __cplusplus

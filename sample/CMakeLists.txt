@@ -8,19 +8,22 @@ file(GLOB SOURCE_FILES
     *.c
 )
 
-if(WIN32)
-file(GLOB PLATFORM_SOURCE_FILES
-    platform/*.cpp
-    platform/*.c
-    platform/*.h
+file(GLOB ABSTRACT_SOURCE_FILES
+    ${CMAKE_SOURCE_DIR}/abstract/*.cpp
+    ${CMAKE_SOURCE_DIR}/abstract/*.hpp
+    ${CMAKE_SOURCE_DIR}/abstract/*.c
+    ${CMAKE_SOURCE_DIR}/abstract/*.h
 )
+
+if(WIN32)
 add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS)
 endif(WIN32)
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-add_executable(${APP_NAME} ${SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
+add_executable(${APP_NAME} ${SOURCE_FILES} ${ABSTRACT_SOURCE_FILES})
 target_link_libraries(${APP_NAME} utcp)
+source_group_by_dir(SOURCE_FILES)
 
 if(APPLE)
     target_link_libraries(${APP_NAME} "-framework CoreFoundation")

@@ -67,7 +67,7 @@ struct encode
 	uint8_t* end;
 };
 
-class ds_connection : public utcp_connection
+class ds_connection : public udp_utcp_connection
 {
   public:
 	ds_connection();

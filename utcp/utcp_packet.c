@@ -129,7 +129,7 @@ static bool ReceivedNextBunch(struct utcp_connection* fd, struct utcp_bunch_node
 				 cur_utcp_bunch->ChIndex, cur_utcp_bunch->DataBitsLen);
 	}
 
-	utcp_recv(fd, HandleBunch, HandleBunchCount);
+	utcp_recv_bunch(fd, HandleBunch, HandleBunchCount);
 	if (bPartial)
 	{
 		assert(HandleBunchCount > 1);
@@ -292,8 +292,8 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 
 	if (bHasServerFrameTime)
 	{
-		// TODO
-		assert(false);
+		uint8_t FrameTimeByte = 0;
+		bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1);
 	}
 
 	bool bSkipAck = false;
@@ -394,7 +394,7 @@ void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t Size
 	// Flush if we can't add to current buffer
 	if (TotalSizeInBits > GetFreeSendBufferBits(fd))
 	{
-		utcp_flush(fd);
+		utcp_send_flush(fd);
 	}
 
 	// If this is the start of the queue, make sure to add the packet id
@@ -442,7 +442,7 @@ int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t*
 	// Flush now if we are full
 	if (GetFreeSendBufferBits(fd) == 0)
 	{
-		utcp_flush(fd);
+		utcp_send_flush(fd);
 	}
 
 	return RememberedPacketId;
