@@ -8,5 +8,5 @@ project(${PROJ_NAME})
 include(Common.cmake)
 
 add_subdirectory(utcp)
-add_subdirectory(sample)
+# add_subdirectory(sample)
 add_subdirectory(test)

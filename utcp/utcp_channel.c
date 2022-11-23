@@ -1,4 +1,4 @@
-#include "utcp_channel.h"
+﻿#include "utcp_channel.h"
 #include "utcp_def.h"
 #include "utcp_utils.h"
 #include <assert.h>
@@ -9,11 +9,13 @@ struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutR
 	struct utcp_channel* utcp_channel = (struct utcp_channel*)utcp_realloc(NULL, sizeof(*utcp_channel));
 	memset(utcp_channel, 0, sizeof(*utcp_channel));
 
+	utcp_channel->CloseReason = -1;
 	utcp_channel->InReliable = InitInReliable;
 	utcp_channel->OutReliable = InitOutReliable;
 	dl_list_init(&utcp_channel->InRec);
 	dl_list_init(&utcp_channel->OutRec);
 	dl_list_init(&utcp_channel->InPartialBunch);
+
 	return utcp_channel;
 }
 
@@ -37,10 +39,15 @@ void free_utcp_channel(struct utcp_channel* utcp_channel)
 	}
 	assert(utcp_channel->NumOutRec == 0);
 
-
 	clear_partial_data(utcp_channel);
 
 	utcp_realloc(utcp_channel, 0);
+}
+
+void mark_channel_close(struct utcp_channel* utcp_channel, int8_t CloseReason)
+{
+	assert(CloseReason != -1);
+	utcp_channel->CloseReason = CloseReason;
 }
 
 struct utcp_bunch_node* alloc_utcp_bunch_node()
@@ -198,7 +205,6 @@ enum merge_partial_result merge_partial_data(struct utcp_channel* utcp_channel, 
 		dl_list_push_before(&utcp_channel->InPartialBunch, &utcp_bunch_node->dl_list_node);
 
 		return partial_merge_succeed;
-
 	}
 	else
 	{

@@ -1,11 +1,11 @@
-#include "utcp.h"
+﻿#include "utcp.h"
 #include "bit_buffer.h"
+#include "utcp_channel.h"
 #include "utcp_handshake.h"
 #include "utcp_packet.h"
 #include "utcp_packet_notify.h"
 #include "utcp_sequence_number.h"
 #include "utcp_utils.h"
-#include "utcp_channel.h"
 #include <assert.h>
 #include <string.h>
 
@@ -18,25 +18,75 @@ void utcp_add_time(int64_t delta_time_ns)
 	utcp_config.ElapsedTime += (delta_time_ns / 1000);
 }
 
+
+void utcp_listener_init(struct utcp_listener* fd, void* userdata)
+{
+	memset(fd, 0, sizeof(*fd));
+	fd->userdata = userdata;
+	fd->ActiveSecret = 255;
+
+	utcp_listener_update_secret(fd, NULL);
+}
+
+// StatelessConnectHandlerComponent::UpdateSecret
+void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secret[64] /* = NULL*/)
+{
+	static_assert(SECRET_BYTE_SIZE == 64, "SECRET_BYTE_SIZE == 64");
+
+	fd->LastSecretUpdateTimestamp = utcp_gettime();
+
+	// On first update, update both secrets
+	if (fd->ActiveSecret == 255)
+	{
+		uint8_t* CurArray = fd->HandshakeSecret[1];
+		for (int i = 0; i < SECRET_BYTE_SIZE; i++)
+		{
+			CurArray[i] = rand() % 255;
+		}
+
+		fd->ActiveSecret = 0;
+	}
+	else
+	{
+		fd->ActiveSecret = (uint8_t)!fd->ActiveSecret;
+	}
+
+	uint8_t* CurArray = fd->HandshakeSecret[fd->ActiveSecret];
+	if (special_secret)
+	{
+		memcpy(CurArray, special_secret, SECRET_BYTE_SIZE);
+	}
+	else
+	{
+		for (int i = 0; i < SECRET_BYTE_SIZE; i++)
+		{
+			CurArray[i] = rand() % 255;
+		}
+	}
+}
+
+void utcp_listener_accept(struct utcp_listener* fd, struct utcp_connection* conn, bool reconnect)
+{
+}
+
 struct utcp_config* utcp_get_config()
 {
 	return &utcp_config;
 }
 
-void utcp_init(struct utcp_fd* fd, void* userdata, int is_client)
+void utcp_init(struct utcp_connection* fd, void* userdata, int is_client)
 {
 	memset(fd, 0, sizeof(*fd));
 	fd->userdata = userdata;
 	fd->mode = is_client ? Client : Server;
-	fd->ActiveSecret = 255;
 }
 
-void utcp_uninit(struct utcp_fd* fd)
+void utcp_uninit(struct utcp_connection* fd)
 {
 	utcp_closeall_channel(fd);
 }
 
-void utcp_connect(struct utcp_fd* fd)
+void utcp_connect(struct utcp_connection* fd)
 {
 	assert(fd->mode == Client);
 	fd->bBeganHandshaking = true;
@@ -44,7 +94,7 @@ void utcp_connect(struct utcp_fd* fd)
 }
 
 // UIpNetDriver::ProcessConnectionlessPacket
-int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const uint8_t* buffer, int len)
+int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len)
 {
 	utcp_dump("connectionless_incoming", 0, buffer, len);
 
@@ -86,7 +136,7 @@ int utcp_connectionless_incoming(struct utcp_fd* fd, const char* address, const 
 }
 
 // UNetConnection::InitSequence
-void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
+void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
 {
 	fd->InPacketId = IncomingSequence - 1;
 	fd->OutPacketId = OutgoingSequence;
@@ -103,7 +153,7 @@ void utcp_sequence_init(struct utcp_fd* fd, int32_t IncomingSequence, int32_t Ou
 // ReceivedRawPacket
 // PacketHandler
 // StatelessConnectHandlerComponent::Incoming
-int utcp_ordered_incoming(struct utcp_fd* fd, uint8_t* buffer, int len)
+int utcp_ordered_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
 	utcp_dump("ordered_incoming", 0, buffer, len);
 
@@ -137,7 +187,7 @@ int utcp_ordered_incoming(struct utcp_fd* fd, uint8_t* buffer, int len)
 	return 0;
 }
 
-int utcp_update(struct utcp_fd* fd)
+int utcp_update(struct utcp_connection* fd)
 {
 	if (fd->mode == Client)
 	{
@@ -167,16 +217,12 @@ int utcp_update(struct utcp_fd* fd)
 	}
 	else
 	{
-		double now = utcp_gettime();
-		if (now - fd->LastSecretUpdateTimestamp > SECRET_UPDATE_TIME || fd->LastSecretUpdateTimestamp == 0)
-		{
-			UpdateSecret(fd);
-		}
+		
 	}
 	return 0;
 }
 
-int32_t utcp_peep_packet_id(struct utcp_fd* fd, uint8_t* buffer, int len)
+int32_t utcp_peep_packet_id(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
@@ -193,12 +239,12 @@ int32_t utcp_peep_packet_id(struct utcp_fd* fd, uint8_t* buffer, int len)
 	return PeekPacketId(fd, &bitbuf);
 }
 
-int32_t utcp_expect_packet_id(struct utcp_fd* fd)
+int32_t utcp_expect_packet_id(struct utcp_connection* fd)
 {
 	return fd->InPacketId + 1;
 }
 
-int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
+int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 {
 	int32_t packet_id = SendRawBunch(fd, bunch);
 	utcp_log(Verbose, "send bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d, PacketId=%d", bunch->bOpen, bunch->bClose, bunch->NameIndex, bunch->ChIndex,
@@ -207,7 +253,7 @@ int32_t utcp_send_bunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 }
 
 // UNetConnection::FlushNet
-int utcp_flush(struct utcp_fd* fd)
+int utcp_flush(struct utcp_connection* fd)
 {
 	int64_t now = utcp_gettime_ms();
 	if (fd->SendBufferBitsNum == 0 && !fd->HasDirtyAcks && (now - fd->LastSendTime) < KeepAliveTime)

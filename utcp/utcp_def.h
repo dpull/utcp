@@ -1,4 +1,4 @@
-// Copyright DPULL, Inc. All Rights Reserved.
+﻿// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,16 +47,9 @@ enum utcp_mode
 	Server	// Serverside PacketHandler
 };
 
-struct utcp_fd
+struct utcp_listener
 {
 	void* userdata;
-
-	// 握手相关
-	enum utcp_mode mode;
-	enum utcp_state state;
-
-	/** Whether or not component handshaking has begun */
-	uint8_t bBeganHandshaking : 1;
 
 	/** Client: Whether or not we are in the middle of a restarted handshake. Server: Whether or not the last handshake was a restarted handshake. */
 	uint8_t bRestartedHandshake : 1;
@@ -69,6 +62,35 @@ struct utcp_fd
 
 	/** The time of the last secret value update */
 	double LastSecretUpdateTimestamp;
+
+	/** The local (client) time at which the challenge was last updated */
+	int64_t LastChallengeTimestamp;
+
+	/** The cookie which completed the connection handshake. */
+	uint8_t AuthorisedCookie[COOKIE_BYTE_SIZE];
+
+	/** The initial server sequence value, from the last successful handshake */
+	int32_t LastServerSequence;
+
+	/** The initial client sequence value, from the last successful handshake */
+	int32_t LastClientSequence;
+
+	char LastChallengeSuccessAddress[64]; // INET6_ADDRSTRLEN + PORT
+};
+
+struct utcp_connection
+{
+	void* userdata;
+
+	// 握手相关
+	enum utcp_mode mode;
+	enum utcp_state state;
+
+	/** Whether or not component handshaking has begun */
+	uint8_t bBeganHandshaking : 1;
+
+	/** Client: Whether or not we are in the middle of a restarted handshake. Server: Whether or not the last handshake was a restarted handshake. */
+	uint8_t bRestartedHandshake : 1;
 
 	/** The local (client) time at which the challenge was last updated */
 	int64_t LastChallengeTimestamp;
@@ -125,16 +147,14 @@ struct utcp_fd
 
 	/** Stores the bit number where we wrote the dummy packet info in the packet header */
 	size_t HeaderMarkForPacketInfo;
-
-	uint8_t AllowMerge; // Whether to allow merging.
 };
 
 struct utcp_config
 {
-	void (*on_accept)(struct utcp_fd* fd, void* userdata, bool reconnect);
-	void (*on_raw_send)(struct utcp_fd* fd, void* userdata, const void* data, int len);
-	void (*on_recv)(struct utcp_fd* fd, void* userdata, struct utcp_bunch  * const bunches[], int count);
-	void (*on_delivery_status)(struct utcp_fd* fd, void* userdata, int32_t packet_id, bool ack);
+	void (*on_accept)(struct utcp_listener* fd, void* userdata, bool reconnect);
+	void (*on_raw_send)(struct utcp_connection* fd, void* userdata, const void* data, int len);
+	void (*on_recv)(struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count);
+	void (*on_delivery_status)(struct utcp_connection* fd, void* userdata, int32_t packet_id, bool ack);
 	void (*on_log)(int level, const char* msg, va_list args);
 	void* (*on_realloc)(void* ptr, size_t size);
 

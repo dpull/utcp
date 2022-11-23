@@ -1,5 +1,6 @@
-#include "utcp_packet_notify.h"
+﻿#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
+#include "utcp_channel.h"
 #include "utcp_def.h"
 #include "utcp_packet.h"
 #include "utcp_sequence_number.h"
@@ -7,7 +8,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include "utcp_channel.h"
 
 static inline size_t MIN(size_t a, size_t b)
 {
@@ -69,7 +69,7 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 }
 
 //  UNetConnection::ReceivedAck
-static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
+static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
 {
 	// Advance OutAckPacketId
 	fd->OutAckPacketId = AckPacketId;
@@ -92,7 +92,7 @@ static void ReceivedAck(struct utcp_fd* fd, int32_t AckPacketId)
 }
 
 // UNetConnection::ReceivedNak
-static void ReceivedNak(struct utcp_fd* fd, int32_t NakPacketId)
+static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
 {
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
 	for (int i = 0; i < _countof(fd->Channels); ++i)
@@ -171,7 +171,8 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 	}
 }
 
-void HandlePacketNotification(struct utcp_fd* fd, uint16_t AckedSequence, bool bDelivered)
+// auto HandlePacketNotification = [&Header, &ChannelsToClose, this](FNetPacketNotify::SequenceNumberT AckedSequence, bool bDelivered)
+void HandlePacketNotification(struct utcp_connection* fd, uint16_t AckedSequence, bool bDelivered)
 {
 	// Increase LastNotifiedPacketId, this is a full packet Id
 	++fd->LastNotifiedPacketId;
@@ -196,7 +197,7 @@ void HandlePacketNotification(struct utcp_fd* fd, uint16_t AckedSequence, bool b
 }
 
 // FNetPacketNotify::Update
-int32_t packet_notify_Update(struct utcp_fd* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
+int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
 	const int32_t InSeqDelta = GetSequenceDelta(packet_notify, notification_header);
 	if (InSeqDelta > 0)
@@ -335,7 +336,7 @@ bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbu
 }
 
 // FNetPacketNotify::ReadHeader
-int packet_notify_ReadHeader(struct utcp_fd* fd, struct bitbuf* bitbuf, struct notification_header* notification_header)
+int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, struct notification_header* notification_header)
 {
 	// Read packed header
 	uint32_t PackedHeader = 0;

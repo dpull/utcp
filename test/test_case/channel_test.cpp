@@ -1,42 +1,6 @@
+﻿#include "test_utils.h"
 #include "gtest/gtest.h"
-extern "C" {
-#include "utcp/utcp_def.h"
-#include "utcp/utcp_channel.h"
-}
 #include <vector>
-
-template <typename T, T* (*AllocFn)(), void (*FreeFn)(T*)> struct utcp_raii
-{
-	utcp_raii()
-	{
-		p = AllocFn();
-	}
-	~utcp_raii()
-	{
-		if (p)
-			FreeFn(p);
-	}
-
-	T* operator&()
-	{
-		return p;
-	}
-
-	void reset()
-	{
-		p = nullptr;
-	}
-
-	T* p;
-};
-
-static utcp_channel* alloc_utcp_channel_zero()
-{
-	return alloc_utcp_channel(0, 0);
-}
-
-using utcp_bunch_node_raii = utcp_raii<utcp_bunch_node, alloc_utcp_bunch_node, free_utcp_bunch_node>;
-using utcp_channel_rtti = utcp_raii<utcp_channel, alloc_utcp_channel_zero, free_utcp_channel>;
 
 void reset_nodes(utcp_bunch_node_raii nodes[], size_t size)
 {
@@ -150,7 +114,6 @@ TEST(channel, free_ougoing)
 	}
 
 	reset_nodes(nodes, std::size(nodes));
-
 	ASSERT_EQ((&channel)->NumOutRec, 1);
 }
 
@@ -174,9 +137,13 @@ TEST(channel, partial_reliable)
 		bool bOutSkipAck;
 		int ret = merge_partial_data(&channel, node, &bOutSkipAck);
 		if (i + 1 != std::size(nodes))
+		{
 			ASSERT_EQ(ret, partial_merge_succeed);
+		}
 		else
+		{
 			ASSERT_EQ(ret, partial_available);
+		}
 		ASSERT_FALSE(bOutSkipAck);
 	}
 
@@ -184,7 +151,6 @@ TEST(channel, partial_reliable)
 	ASSERT_EQ(get_partial_bunch(&channel, handle_bunches, (int)std::size(handle_bunches)), 4);
 
 	reset_nodes(nodes, std::size(nodes));
-
 	clear_partial_data(&channel);
 }
 
@@ -211,6 +177,7 @@ TEST(channel, partial_reliable_failed)
 		{
 			ASSERT_EQ(ret, partial_merge_succeed);
 			ASSERT_FALSE(bOutSkipAck);
+			nodes[i].reset();
 		}
 		else
 		{
@@ -218,8 +185,6 @@ TEST(channel, partial_reliable_failed)
 			ASSERT_TRUE(bOutSkipAck);
 		}
 	}
-	reset_nodes(nodes, std::size(nodes));
-
 	clear_partial_data(&channel);
 }
 
@@ -243,7 +208,6 @@ TEST(channel, partial_reliable_none_initial)
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_failed);
 	}
-	reset_nodes(nodes, std::size(nodes));
 }
 
 TEST(channel, partial_unreliable)
@@ -309,6 +273,7 @@ TEST(channel, partial_unreliable_failed)
 		{
 			ASSERT_EQ(ret, partial_merge_succeed);
 			ASSERT_FALSE(bOutSkipAck);
+			nodes[i].reset();
 		}
 		else
 		{
@@ -316,10 +281,7 @@ TEST(channel, partial_unreliable_failed)
 			ASSERT_TRUE(bOutSkipAck);
 		}
 	}
-
-	reset_nodes(nodes, std::size(nodes));
 }
-
 
 TEST(channel, partial_unreliable_none_initial)
 {
@@ -341,7 +303,6 @@ TEST(channel, partial_unreliable_none_initial)
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_failed);
 	}
-	reset_nodes(nodes, std::size(nodes));
 }
 
 TEST(channel, partial_unreliable_reliable)
@@ -374,6 +335,7 @@ TEST(channel, partial_unreliable_reliable)
 		auto node = &nodes1[i];
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_succeed);
+		nodes1[i].reset();
 	}
 
 	for (int i = 0; i < std::size(nodes2); ++i)
@@ -381,10 +343,8 @@ TEST(channel, partial_unreliable_reliable)
 		auto node = &nodes2[i];
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_succeed);
+		nodes2[i].reset();
 	}
-
-	reset_nodes(nodes1, std::size(nodes1));
-	reset_nodes(nodes2, std::size(nodes2));
 }
 
 TEST(channel, partial_reliable_unreliable)
@@ -417,6 +377,7 @@ TEST(channel, partial_reliable_unreliable)
 		auto node = &nodes2[i];
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_succeed);
+		nodes2[i].reset();
 	}
 
 	for (int i = 0; i < std::size(nodes1); ++i)
@@ -425,7 +386,4 @@ TEST(channel, partial_reliable_unreliable)
 		bool bOutSkipAck;
 		ASSERT_EQ(merge_partial_data(&channel, node, &bOutSkipAck), partial_merge_failed);
 	}
-
-	reset_nodes(nodes1, std::size(nodes1));
-	reset_nodes(nodes2, std::size(nodes2));
 }

@@ -11,7 +11,7 @@ typedef uint32_t SequenceHistoryWord;
 enum
 {
 	UTCP_RELIABLE_BUFFER = 256, // Power of 2 >= 1.
-	UTCP_MAX_CHSEQUENCE = 1024,  // Power of 2 >RELIABLE_BUFFER, covering loss/misorder time.
+	UTCP_MAX_CHSEQUENCE = 1024, // Power of 2 >RELIABLE_BUFFER, covering loss/misorder time.
 	MaxSequenceHistoryLength = 256,
 	SequenceHistoryBitsPerWord = (sizeof(SequenceHistoryWord) * 8),
 	SequenceHistoryWordCount = (MaxSequenceHistoryLength / SequenceHistoryBitsPerWord),

@@ -1,5 +1,5 @@
-#include "utcp/utcp.h"
-#include "utcp/utcp_def.h"
+﻿
+#include "test_utils.h"
 #include "gtest/gtest.h"
 #include <memory>
 
@@ -14,8 +14,8 @@ struct packet : public ::testing::Test
 		last_recv.clear();
 
 		auto config = utcp_get_config();
-		config->on_raw_send = [](struct utcp_fd* fd, void* userdata, const void* data, int len) { last_send.insert(last_send.end(), (const char*)data, (const char*)data + len); };
-		config->on_recv = [](struct utcp_fd* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
+		config->on_raw_send = [](struct utcp_connection* fd, void* userdata, const void* data, int len) { last_send.insert(last_send.end(), (const char*)data, (const char*)data + len); };
+		config->on_recv = [](struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
 			for (int i = 0; i < count; ++i)
 			{
 				last_recv.push_back(*bunches[i]);
@@ -47,7 +47,7 @@ TEST_F(packet, accept_hello)
 	uint8_t packet_hello[] = {0x80, 0x00, 0xb5, 0x78, 0x01, 0x00, 0x00, 0x00, 0xfe, 0x6f, 0x02, 0xe0, 0xe2, 0xff,
 							  0x02, 0x50, 0x00, 0x20, 0x60, 0xa6, 0x0f, 0x93, 0x11, 0x00, 0x00, 0x00, 0x60};
 
-	std::unique_ptr<utcp_fd> fd(new utcp_fd);
+	utcp_fd_rtti fd;
 	utcp_init(fd.get(), nullptr, false);
 	utcp_sequence_init(fd.get(), 12054, 10245);
 
@@ -91,7 +91,7 @@ TEST_F(packet, accept_hello_login)
 
 	uint8_t packet_netspeed[] = {0x60, 0x40, 0x38, 0x20, 0xE, 0x0, 0x0, 0x0, 0x72, 0x88, 0x0, 0x30, 0xE0, 0xBF, 0x0, 0xA, 0x20, 0x0, 0x35, 0xC, 0x0, 0x18};
 
-	std::unique_ptr<utcp_fd> fd(new utcp_fd);
+	utcp_fd_rtti fd;
 	utcp_init(fd.get(), nullptr, false);
 	utcp_sequence_init(fd.get(), 1027, 513);
 

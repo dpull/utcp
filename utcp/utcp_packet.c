@@ -1,12 +1,12 @@
-#include "utcp_packet.h"
+﻿#include "utcp_packet.h"
 #include "bit_buffer.h"
 #include "utcp.h"
 #include "utcp_bunch.h"
+#include "utcp_channel.h"
 #include "utcp_handshake.h"
 #include "utcp_packet_notify.h"
 #include "utcp_utils.h"
 #include <assert.h>
-#include "utcp_channel.h"
 
 enum
 {
@@ -31,19 +31,30 @@ static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max
 	return Reference + BestSignedDifference(Value, Reference, Max);
 }
 
-static struct utcp_channel* utcp_get_channel(struct utcp_fd* fd, int ChIndex)
+static struct utcp_channel* utcp_get_channel(struct utcp_connection* fd, struct utcp_bunch* utcp_bunch)
 {
-	return fd->Channels[ChIndex];
+	struct utcp_channel* utcp_channel = fd->Channels[utcp_bunch->ChIndex];
+	if (!utcp_channel)
+	{
+		if (utcp_bunch->bOpen)
+		{
+			utcp_channel = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
+			fd->Channels[utcp_bunch->ChIndex] = utcp_channel;
+		}
+		else
+		{
+			assert(false);
+			utcp_log(Warning, "utcp_get_channel failed");
+		}
+	}
+	if (utcp_bunch->bClose && utcp_channel)
+	{
+		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
+	}
+	return utcp_channel;
 }
 
-static struct utcp_channel* utcp_open_channel(struct utcp_fd* fd, int ChIndex)
-{
-	assert(!fd->Channels[ChIndex]);
-	fd->Channels[ChIndex] = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
-	return fd->Channels[ChIndex];
-}
-
-static void utcp_close_channel(struct utcp_fd* fd, int ChIndex)
+static void utcp_close_channel(struct utcp_connection* fd, int ChIndex)
 {
 	if (!fd->Channels[ChIndex])
 		return;
@@ -51,7 +62,7 @@ static void utcp_close_channel(struct utcp_fd* fd, int ChIndex)
 	fd->Channels[ChIndex] = NULL;
 }
 
-void utcp_closeall_channel(struct utcp_fd* fd)
+void utcp_closeall_channel(struct utcp_connection* fd)
 {
 	for (int i = 0; i < _countof(fd->Channels); ++i)
 	{
@@ -62,10 +73,9 @@ void utcp_closeall_channel(struct utcp_fd* fd)
 	}
 }
 
-
 // UChannel::ReceivedNextBunch
 // 原本ReceivedNextBunch返回值是bDeleted, 为了简化, 该函数做释放或者引用
-static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_bunch_node, bool* bOutSkipAck)
+static bool ReceivedNextBunch(struct utcp_connection* fd, struct utcp_bunch_node* utcp_bunch_node, bool* bOutSkipAck)
 {
 	// We received the next bunch. Basically at this point:
 	//	-We know this is in order if reliable
@@ -75,7 +85,7 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 	// Note this bunch's retirement.
 
 	struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
-	struct utcp_channel* utcp_channel = utcp_get_channel(fd, utcp_bunch->ChIndex);
+	struct utcp_channel* utcp_channel = utcp_get_channel(fd, utcp_bunch);
 	assert(utcp_channel);
 
 	if (utcp_bunch->bReliable)
@@ -133,7 +143,7 @@ static bool ReceivedNextBunch(struct utcp_fd* fd, struct utcp_bunch_node* utcp_b
 }
 
 // Dispatch any waiting bunches.
-static void DispatchWaitingBunches(struct utcp_fd* fd, struct utcp_channel* utcp_channel)
+static void DispatchWaitingBunches(struct utcp_connection* fd, struct utcp_channel* utcp_channel)
 {
 	for (;;)
 	{
@@ -151,7 +161,7 @@ static void DispatchWaitingBunches(struct utcp_fd* fd, struct utcp_channel* utcp
 	}
 }
 
-static void ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
+static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, bool* bOutSkipAck)
 {
 	struct utcp_bunch_node* utcp_bunch_node = NULL;
 	struct utcp_channel* utcp_channel = NULL;
@@ -170,15 +180,7 @@ static void ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bO
 			break;
 		}
 
-		utcp_channel = utcp_get_channel(fd, utcp_bunch->ChIndex);
-		if (!utcp_channel)
-		{
-			if (utcp_bunch->bOpen)
-			{
-				utcp_channel = utcp_open_channel(fd, utcp_bunch->ChIndex);
-			}
-		}
-
+		utcp_channel = utcp_get_channel(fd, utcp_bunch);
 		if (!utcp_channel)
 		{
 			break;
@@ -235,7 +237,7 @@ static void ReceivedRawBunch(struct utcp_fd* fd, struct bitbuf* bitbuf, bool* bO
 }
 
 // UNetConnection::ReceivedPacket
-int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
+int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
@@ -287,7 +289,7 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 	uint8_t bHasServerFrameTime;
 	if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
 		return -6;
-	
+
 	if (bHasServerFrameTime)
 	{
 		// TODO
@@ -316,7 +318,7 @@ int ReceivedPacket(struct utcp_fd* fd, struct bitbuf* bitbuf)
 	return 0;
 }
 
-int PeekPacketId(struct utcp_fd* fd, struct bitbuf* bitbuf)
+int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
@@ -333,7 +335,7 @@ int PeekPacketId(struct utcp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // UNetConnection::GetFreeSendBufferBits
-int64_t GetFreeSendBufferBits(struct utcp_fd* fd)
+int64_t GetFreeSendBufferBits(struct utcp_connection* fd)
 {
 	// If we haven't sent anything yet, make sure to account for the packet header + trailer size
 	// Otherwise, we only need to account for trailer size
@@ -347,7 +349,7 @@ int64_t GetFreeSendBufferBits(struct utcp_fd* fd)
 }
 
 // UNetConnection::WritePacketHeader
-void WritePacketHeader(struct utcp_fd* fd, struct bitbuf* bitbuf)
+void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	// If this is a header refresh, we only serialize the updated serial number information
 	size_t restore_num = bitbuf->num;
@@ -377,7 +379,7 @@ void WritePacketHeader(struct utcp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // UNetConnection::WriteDummyPacketInfo
-void WriteDummyPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
+void WriteDummyPacketInfo(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	// The first packet of a frame will include the packet info payload
 	const uint8_t bHasPacketInfoPayload = 0;
@@ -385,7 +387,7 @@ void WriteDummyPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
 }
 
 // void UNetConnection::PrepareWriteBitsToSendBuffer
-void PrepareWriteBitsToSendBuffer(struct utcp_fd* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
+void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
 {
 	const int32_t TotalSizeInBits = SizeInBits + ExtraSizeInBits;
 
@@ -408,7 +410,6 @@ void PrepareWriteBitsToSendBuffer(struct utcp_fd* fd, const int32_t SizeInBits, 
 		WriteDummyPacketInfo(fd, &bitbuf);
 
 		// We do not allow the first bunch to merge with the ack data as this will "revert" the ack data.
-		fd->AllowMerge = false;
 
 		// Update stats for PacketIdBits and ackdata (also including the data used for packet RTT and saturation calculations)
 		// ...
@@ -418,7 +419,7 @@ void PrepareWriteBitsToSendBuffer(struct utcp_fd* fd, const int32_t SizeInBits, 
 }
 
 // UNetConnection::WriteBitsToSendBufferInternal
-int32_t WriteBitsToSendBufferInternal(struct utcp_fd* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
+int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
 {
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));
@@ -448,24 +449,16 @@ int32_t WriteBitsToSendBufferInternal(struct utcp_fd* fd, const uint8_t* Bits, c
 }
 
 // UNetConnection::WriteFinalPacketInfo
-void WriteFinalPacketInfo(struct utcp_fd* fd, struct bitbuf* bitbuf)
+void WriteFinalPacketInfo(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	// Write Jitter clock time
 	// 暂时不移植这个功能了
 }
 
 // UNetConnection::SendRawBunch
-int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
+int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 {
-	struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch->ChIndex);
-	if (!utcp_channel)
-	{
-		if (bunch->bOpen)
-		{
-			utcp_channel = utcp_open_channel(fd, bunch->ChIndex);
-		}
-	}
-	
+	struct utcp_channel* utcp_channel = utcp_get_channel(fd, bunch);
 	if (!utcp_channel)
 	{
 		return -2;
@@ -521,7 +514,7 @@ int32_t SendRawBunch(struct utcp_fd* fd, struct utcp_bunch* bunch)
 }
 
 // UNetConnection::WriteBitsToSendBuffer
-int WriteBitsToSendBuffer(struct utcp_fd* fd, char* buffer, int bits_len)
+int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len)
 {
 	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
 	return WriteBitsToSendBufferInternal(fd, NULL, 0, (uint8_t*)buffer, bits_len);

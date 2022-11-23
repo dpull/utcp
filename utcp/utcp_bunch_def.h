@@ -78,4 +78,6 @@ struct utcp_channel
 
 	int32_t OutReliable;
 	int32_t InReliable;
+
+	int8_t CloseReason;
 };

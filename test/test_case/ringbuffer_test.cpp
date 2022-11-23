@@ -1,5 +1,5 @@
-﻿#include "gtest/gtest.h"
-#include "utcp/3rd/ringbuffer.h"
+﻿#include "utcp/3rd/ringbuffer.h"
+#include "gtest/gtest.h"
 
 TEST(ring_buffer, size)
 {
@@ -16,7 +16,7 @@ TEST(ring_buffer, size)
 		ring_buffer_queue(&ring_buffer, start + i);
 	}
 
-	while (!ring_buffer_is_empty(&ring_buffer)) 
+	while (!ring_buffer_is_empty(&ring_buffer))
 	{
 		uint32_t val = 0;
 		auto ret = ring_buffer_dequeue(&ring_buffer, &val);

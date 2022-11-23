@@ -1,15 +1,16 @@
-// Copyright DPULL, Inc. All Rights Reserved.
+﻿// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "3rd/dl_list.h"
+#include "utcp_def.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "utcp_def.h"
 
 struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutReliable);
 void free_utcp_channel(struct utcp_channel* utcp_channel);
+void mark_channel_close(struct utcp_channel* utcp_channel, int8_t CloseReason);
 
 struct utcp_bunch_node* alloc_utcp_bunch_node();
 void free_utcp_bunch_node(struct utcp_bunch_node* utcp_bunch_node);
@@ -23,7 +24,7 @@ int remove_ougoing_data(struct utcp_channel* utcp_channel, int32_t packet_id, st
 enum merge_partial_result
 {
 	partial_merge_fatal = -2, // Close connection...
-	partial_merge_failed = -1, 
+	partial_merge_failed = -1,
 	partial_merge_succeed = 0,
 	partial_available = 1,
 };

@@ -1,4 +1,4 @@
-// Copyright DPULL, Inc. All Rights Reserved.
+﻿// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
 #include "bit_buffer.h"
@@ -37,10 +37,10 @@ static inline void utcp_log(enum log_level level, const char* fmt, ...)
 static inline void* utcp_realloc(void* ptr, size_t size)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->on_realloc)
-		return utcp_config->on_realloc(ptr, size);
-	else
+	if (!utcp_config->on_realloc)
 		return realloc(ptr, size);
+	else
+		return utcp_config->on_realloc(ptr, size);
 }
 
 static inline void utcp_dump(const char* type, int ext, const void* data, int len)
@@ -106,7 +106,17 @@ static inline double utcp_gettime(void)
 	return ((double)utcp_config->ElapsedTime) / 1000 / 1000 / 1000;
 }
 
-static inline void utcp_raw_send(struct utcp_fd* fd, const void* buffer, size_t len)
+static inline void utcp_listener_outgoing(struct utcp_listener* fd, const void* buffer, size_t len)
+{
+	utcp_dump("raw_send", 0, buffer, (int)len);
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (utcp_config->on_raw_send)
+	{
+		utcp_config->on_raw_send(NULL, fd->userdata, buffer, (int)len);
+	}
+}
+
+static inline void utcp_connection_outgoing(struct utcp_connection* fd, const void* buffer, size_t len)
 {
 	utcp_dump("raw_send", 0, buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
@@ -116,7 +126,9 @@ static inline void utcp_raw_send(struct utcp_fd* fd, const void* buffer, size_t 
 	}
 }
 
-static inline void utcp_accept(struct utcp_fd* fd, bool reconnect)
+#define utcp_raw_send(fd, buffer, len) _Generic((fd), struct utcp_listener * : utcp_listener_outgoing, struct utcp_connection * : utcp_connection_outgoing)(fd, buffer, len)
+
+static inline void utcp_accept(struct utcp_listener* fd, bool reconnect)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_accept)
@@ -125,7 +137,7 @@ static inline void utcp_accept(struct utcp_fd* fd, bool reconnect)
 	}
 }
 
-static inline void utcp_recv(struct utcp_fd* fd, struct utcp_bunch* bunches[], int bunches_count)
+static inline void utcp_recv(struct utcp_connection* fd, struct utcp_bunch* bunches[], int bunches_count)
 {
 	assert(bunches_count > 0);
 	struct utcp_config* utcp_config = utcp_get_config();
@@ -135,7 +147,7 @@ static inline void utcp_recv(struct utcp_fd* fd, struct utcp_bunch* bunches[], i
 	}
 }
 
-static inline void utcp_delivery_status(struct utcp_fd* fd, int32_t packet_id, bool ack)
+static inline void utcp_delivery_status(struct utcp_connection* fd, int32_t packet_id, bool ack)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_delivery_status)
