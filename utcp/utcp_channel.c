@@ -1,4 +1,4 @@
-﻿#include "utcp_channel.h"
+#include "utcp_channel.h"
 #include "utcp_def_internal.h"
 #include "utcp_utils.h"
 #include <assert.h>
@@ -364,7 +364,8 @@ static bool open_channel_resize(struct utcp_open_channels* utcp_open_channels)
 
 void open_channel_uninit(struct utcp_open_channels* utcp_open_channels)
 {
-	utcp_realloc(utcp_open_channels->channels, 0);
+	if (utcp_open_channels->channels)
+		utcp_realloc(utcp_open_channels->channels, 0);
 }
 
 bool open_channel_add(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex)
