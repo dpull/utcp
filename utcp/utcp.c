@@ -23,6 +23,18 @@ void utcp_add_elapsed_time(int64_t delta_time_ns)
 	utcp_config.ElapsedTime += (delta_time_ns / 1000);
 }
 
+struct utcp_listener* utcp_listener_create()
+{
+	return (struct utcp_listener*)utcp_realloc(NULL, sizeof(struct utcp_listener));
+}
+
+
+void utcp_listener_destroy(struct utcp_listener* fd)
+{
+	if (fd)
+		utcp_realloc(fd, 0);
+}
+
 void utcp_listener_init(struct utcp_listener* fd, void* userdata)
 {
 	memset(fd, 0, sizeof(*fd));
@@ -123,6 +135,17 @@ void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection
 		memcpy(conn->AuthorisedCookie, listener->AuthorisedCookie, sizeof(conn->AuthorisedCookie));
 		utcp_sequence_init(conn, listener->LastClientSequence, listener->LastServerSequence);
 	}
+}
+
+struct utcp_connection* utcp_connection_create()
+{
+	return (struct utcp_connection*)utcp_realloc(NULL, sizeof(struct utcp_connection));
+}
+
+void utcp_connection_destroy(struct utcp_connection* fd)
+{
+	if (fd)
+		utcp_realloc(fd, 0);
 }
 
 void utcp_init(struct utcp_connection* fd, void* userdata)

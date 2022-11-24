@@ -1,9 +1,8 @@
 ﻿#pragma once
-#include "utcp_connection.h"
 #include "abstract/utcp.hpp"
+#include "udp_socket.h"
 #include <unordered_map>
 #include <vector>
-#include "udp_socket.h"
 
 struct sockaddr_in_Hash
 {
@@ -37,9 +36,7 @@ class udp_utcp_listener : public utcp::listener
 
   protected:
 	virtual void on_accept(bool reconnect) override;
-
-	utcp::conn* cache_erase_conn(const uint8_t* auth_cookie);
-	void cache_insert_conn(utcp::conn* c);
+	virtual void on_outgoing(const void* data, int len) override;
 	void proc_recv_queue();
 
   private:

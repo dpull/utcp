@@ -1,15 +1,25 @@
 ﻿#include "ds_connection.h"
+#include "utils.h"
 extern "C" {
 #include "utcp/bit_buffer.h"
 }
 #include <cassert>
 #include <cstring>
 
-ds_connection::ds_connection() : udp_utcp_connection(false)
+void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len)
 {
+	memcpy(&dest_addr, addr, addr_len);
+	dest_addr_len = addr_len;
+	socket_fd = fd;
 }
 
-void ds_connection::on_recv( struct utcp_bunch* const bunches[], int count)
+void ds_connection::on_outgoing(const void* data, int len)
+{
+	assert(dest_addr_len > 0);
+	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
+}
+
+void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 {
 	assert(count == 1);
 	if (bunches[0]->DataBitsLen == 0)
@@ -19,10 +29,10 @@ void ds_connection::on_recv( struct utcp_bunch* const bunches[], int count)
 		return;
 	}
 
-	coder.reset(const_cast<uint8_t*>(bunches[0]->Data), bunches[0]->DataBitsLen / 8);
+	codec.reset(const_cast<uint8_t*>(bunches[0]->Data), bunches[0]->DataBitsLen / 8);
 
 	uint8_t msg_type;
-	coder >> msg_type;
+	codec >> msg_type;
 	switch (msg_type)
 	{
 	case 0:
@@ -48,18 +58,19 @@ void ds_connection::on_delivery_status(int32_t packet_id, bool ack)
 
 void ds_connection::send_data()
 {
-	struct utcp_bunch bunch;
+	utcp::large_bunch bunch;
 	memset(&bunch, 0, sizeof(bunch));
 	bunch.NameIndex = 255;
 	bunch.ChIndex = 0;
 	bunch.bReliable = 1;
+	bunch.ExtDataBitsLen = 0;
 
-	auto len = uint16_t(coder.pos - send_buffer);
+	auto len = uint16_t(codec.pos - send_buffer);
 	bunch.DataBitsLen = len * 8;
 	memcpy(bunch.Data, send_buffer, len);
 
-	auto ret = send(&bunch);
-	log("send bunch %d\n", ret);
+	auto ret = send_bunch(&bunch);
+	log("send bunch %d\n", ret.first);
 }
 
 // DEFINE_CONTROL_CHANNEL_MESSAGE(Hello, 0, uint8, uint32, FString); // initial client connection message
@@ -70,15 +81,15 @@ void ds_connection::on_msg_hello()
 	uint32_t RemoteNetworkVersion;
 	std::string EncryptionToken;
 
-	coder >> IsLittleEndian >> RemoteNetworkVersion >> EncryptionToken;
+	codec >> IsLittleEndian >> RemoteNetworkVersion >> EncryptionToken;
 
 	assert(IsLittleEndian);
 	if (EncryptionToken.size() == 0)
 	{
 		challenge = std::to_string((uint64_t)this);
 
-		coder.reset(send_buffer, sizeof(send_buffer));
-		coder << (uint8_t)3 << challenge;
+		codec.reset(send_buffer, sizeof(send_buffer));
+		codec << (uint8_t)3 << challenge;
 		send_data();
 	}
 }
@@ -90,10 +101,10 @@ void ds_connection::on_msg_login()
 	std::string ClientResponse;
 	std::string RequestURL;
 
-	coder >> ClientResponse >> RequestURL;
+	codec >> ClientResponse >> RequestURL;
 
-	coder.reset(send_buffer, sizeof(send_buffer));
-	coder << (uint8_t)1 << std::string("/Game/ThirdPerson/Maps/UEDPIE_0_ThirdPersonMap") << std::string("/Script/Example.ExampleGameMode") << std::string();
+	codec.reset(send_buffer, sizeof(send_buffer));
+	codec << (uint8_t)1 << std::string("/Game/ThirdPerson/Maps/UEDPIE_0_ThirdPersonMap") << std::string("/Script/Example.ExampleGameMode") << std::string();
 	send_data();
 }
 
@@ -101,5 +112,5 @@ void ds_connection::on_msg_login()
 void ds_connection::on_msg_netspeed()
 {
 	uint32_t Rate;
-	coder >> Rate;
+	codec >> Rate;
 }

@@ -1,10 +1,26 @@
 ﻿#include "udp_socket.h"
 #include <cassert>
 
+#ifdef _MSC_VER
+struct WSAGuard
+{
+	WSAGuard()
+	{
+		WSADATA wsadata;
+		WSAStartup(MAKEWORD(2, 2), &wsadata);
+	}
+	~WSAGuard()
+	{
+		WSACleanup();
+	}
+};
+static WSAGuard _WSAGuard;
+#endif
+
 udp_socket::udp_socket()
 {
-	recv_queue.reserve(1024);
-	proc_queue.reserve(1024);
+	recv_queue.reserve(128);
+	proc_queue.reserve(128);
 }
 
 udp_socket::~udp_socket()
@@ -63,10 +79,8 @@ bool udp_socket::connnect(const char* ip, int port)
 
 std::vector<udp_datagram>& udp_socket::swap()
 {
-	{
-		std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
-		recv_queue.swap(proc_queue);
-	}
+	std::lock_guard<decltype(recv_queue_mutex)> lock(recv_queue_mutex);
+	recv_queue.swap(proc_queue);
 	return proc_queue;
 }
 

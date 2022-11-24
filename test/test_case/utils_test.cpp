@@ -109,3 +109,62 @@ TEST(utils, remove)
 	}
 	ASSERT_EQ(cnt, 0);
 }
+
+struct base
+{
+	int i;
+};
+
+struct divide : base
+{
+	struct iter
+	{
+		divide* dd;
+		int pos;
+		
+		void operator ++() {
+			pos+=2;
+		}
+		
+		bool operator != (const iter& rhs) {
+			return pos != rhs.pos;
+		}
+		
+		base* operator* () const
+		{
+			dd->i = pos;
+			return dd;
+		}
+	};
+	
+	int start;
+	int stop;
+	
+	iter begin()
+	{
+		iter ii;
+		ii.dd = this;
+		ii.pos = start;
+		return ii;
+	}
+	
+	iter end()
+	{
+		iter ii;
+		ii.dd = this;
+		ii.pos = stop;
+		return ii;
+	}
+};
+
+TEST(utils, foreach)
+{
+	divide a;
+	a.start = 0;
+	a.stop = 8;
+	
+	for (auto b : a)
+	{
+		printf("%p\t%d\n", b, b->i);
+	}
+}

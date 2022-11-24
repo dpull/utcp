@@ -3,7 +3,7 @@
 #pragma once
 
 #include "bit_buffer.h"
-#include "utcp_def.h"
+#include "utcp_def_internal.h"
 #include "utcp_packet_notify_def.h"
 #include <stdbool.h>
 #include <stdint.h>

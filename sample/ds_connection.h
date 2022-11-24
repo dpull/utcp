@@ -1,10 +1,11 @@
 ﻿#pragma once
-#include "utcp_connection.h"
+#include "abstract/utcp.hpp"
+#include "socket.h"
 #include <cassert>
 #include <cstring>
 #include <string>
 
-struct encode
+struct ue_codec
 {
 	void reset(uint8_t* data, size_t len)
 	{
@@ -12,7 +13,7 @@ struct encode
 		this->end = data + len;
 	}
 
-	encode& operator<<(const uint8_t value)
+	ue_codec& operator<<(const uint8_t value)
 	{
 		assert(pos + sizeof(value) < end);
 		*pos = value;
@@ -20,7 +21,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator>>(uint8_t& value)
+	ue_codec& operator>>(uint8_t& value)
 	{
 		assert(pos + sizeof(value) < end);
 		value = *pos;
@@ -28,7 +29,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator<<(const uint32_t value)
+	ue_codec& operator<<(const uint32_t value)
 	{
 		assert(pos + sizeof(value) <= end);
 		*((uint32_t*)pos) = value;
@@ -36,7 +37,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator>>(uint32_t& value)
+	ue_codec& operator>>(uint32_t& value)
 	{
 		assert(pos + sizeof(value) <= end);
 		value = *((uint32_t*)pos);
@@ -44,7 +45,7 @@ struct encode
 		return *this;
 	}
 
-	encode& operator<<(const std::string& value)
+	ue_codec& operator<<(const std::string& value)
 	{
 		auto size = (uint32_t)value.size();
 		*this << size;
@@ -53,7 +54,7 @@ struct encode
 		pos += size;
 		return *this;
 	}
-	encode& operator>>(std::string& value)
+	ue_codec& operator>>(std::string& value)
 	{
 		uint32_t size;
 		*this >> size;
@@ -67,13 +68,14 @@ struct encode
 	uint8_t* end;
 };
 
-class ds_connection : public udp_utcp_connection
+class ds_connection : public utcp::conn
 {
   public:
-	ds_connection();
+	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len);
 
   protected:
-	virtual void on_recv(struct utcp_bunch* const bunches[], int count) override;
+	virtual void on_outgoing(const void* data, int len) override;
+	virtual void on_recv_bunch(struct utcp_bunch* const bunches[], int count) override;
 	virtual void on_delivery_status(int32_t packet_id, bool ack) override;
 
   private:
@@ -84,6 +86,9 @@ class ds_connection : public udp_utcp_connection
 
   private:
 	std::string challenge;
-	uint8_t send_buffer[UTCP_MAX_PACKET];
-	encode coder;
+	ue_codec codec;
+	socket_t socket_fd = INVALID_SOCKET;
+	struct sockaddr_storage dest_addr;
+	socklen_t dest_addr_len = 0;
+	uint8_t send_buffer[UDP_MTU_SIZE];
 };

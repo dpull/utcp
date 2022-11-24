@@ -3,7 +3,7 @@
 #pragma once
 
 #include "bit_buffer.h"
-#include "utcp_def.h"
+#include "utcp_def_internal.h"
 
 void CapHandshakePacket(struct bitbuf* bitbuf);
 int Outgoing(struct bitbuf* bitbuf);

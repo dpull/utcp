@@ -13,19 +13,18 @@ static bool sockaddr2str(sockaddr_in* addr, char ipstr[], int size)
 	return true;
 }
 
-udp_utcp_listener::udp_utcp_listener() 
+udp_utcp_listener::udp_utcp_listener()
 {
 }
 
 udp_utcp_listener::~udp_utcp_listener()
 {
-	
 }
 
 bool udp_utcp_listener::listen(const char* ip, int port)
 {
 	now = std::chrono::high_resolution_clock::now();
-	return socket.connnect(ip, port);
+	return socket.listen(ip, port);
 }
 
 void udp_utcp_listener::tick()
@@ -56,7 +55,7 @@ void udp_utcp_listener::on_accept(bool reconnect)
 	utcp::conn* conn = nullptr;
 	if (!reconnect)
 	{
-		conn = new utcp::conn;
+		conn = new ds_connection;
 	}
 	else
 	{
@@ -80,13 +79,21 @@ void udp_utcp_listener::on_accept(bool reconnect)
 
 	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&socket.dest_addr, conn));
 	assert(it.second);
+
+	static_cast<ds_connection*>(conn)->bind(socket.socket_fd, &socket.dest_addr, socket.dest_addr_len);
 	accept(conn, reconnect);
+}
+
+void udp_utcp_listener::on_outgoing(const void* data, int len)
+{
+	assert(socket.dest_addr_len > 0);
+	sendto(socket.socket_fd, (const char*)data, len, 0, (sockaddr*)&socket.dest_addr, socket.dest_addr_len);
 }
 
 void udp_utcp_listener::proc_recv_queue()
 {
 	auto& proc_queue = socket.swap();
-	char ipstr[NI_MAXHOST + 8];
+	char ipstr[INET6_ADDRSTRLEN + 8];
 
 	for (auto& datagram : proc_queue)
 	{

@@ -1,6 +1,6 @@
 ﻿#include "utcp_bunch.h"
 #include "bit_buffer.h"
-#include "utcp_def.h"
+#include "utcp_def_internal.h"
 #include <assert.h>
 #include <string.h>
 

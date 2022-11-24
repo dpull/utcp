@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "socket.h"
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <vector>

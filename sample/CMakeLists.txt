@@ -3,16 +3,10 @@ set(APP_NAME ${CURRENT_SOURCE_DIR_NAME}) # 工程名, 默认文件夹名
 
 file(GLOB SOURCE_FILES 
     *.h
+    *.hpp
     *.cpp
     *.cc
     *.c
-)
-
-file(GLOB ABSTRACT_SOURCE_FILES
-    ${CMAKE_SOURCE_DIR}/abstract/*.cpp
-    ${CMAKE_SOURCE_DIR}/abstract/*.hpp
-    ${CMAKE_SOURCE_DIR}/abstract/*.c
-    ${CMAKE_SOURCE_DIR}/abstract/*.h
 )
 
 if(WIN32)
@@ -21,8 +15,8 @@ endif(WIN32)
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-add_executable(${APP_NAME} ${SOURCE_FILES} ${ABSTRACT_SOURCE_FILES})
-target_link_libraries(${APP_NAME} utcp)
+add_executable(${APP_NAME} ${SOURCE_FILES})
+target_link_libraries(${APP_NAME} abstract)
 source_group_by_dir(SOURCE_FILES)
 
 if(APPLE)

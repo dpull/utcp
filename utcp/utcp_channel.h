@@ -3,7 +3,7 @@
 #pragma once
 
 #include "3rd/dl_list.h"
-#include "utcp_def.h"
+#include "utcp_def_internal.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
