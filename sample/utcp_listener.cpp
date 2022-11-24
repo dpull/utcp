@@ -19,6 +19,10 @@ udp_utcp_listener::udp_utcp_listener()
 
 udp_utcp_listener::~udp_utcp_listener()
 {
+	for (auto& it : clients)
+	{
+		delete it.second;
+	}
 }
 
 bool udp_utcp_listener::listen(const char* ip, int port)
@@ -55,7 +59,7 @@ void udp_utcp_listener::on_accept(bool reconnect)
 	utcp::conn* conn = nullptr;
 	if (!reconnect)
 	{
-		conn = new ds_connection;
+		conn = new_conn();
 	}
 	else
 	{
@@ -80,7 +84,6 @@ void udp_utcp_listener::on_accept(bool reconnect)
 	auto it = clients.insert(std::make_pair(*(sockaddr_in*)&socket.dest_addr, conn));
 	assert(it.second);
 
-	static_cast<ds_connection*>(conn)->bind(socket.socket_fd, &socket.dest_addr, socket.dest_addr_len);
 	accept(conn, reconnect);
 }
 

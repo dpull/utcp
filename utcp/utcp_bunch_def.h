@@ -8,10 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(__linux) || defined(__APPLE__)
-#define _countof(array) (sizeof(array) / sizeof(array[0]))
-#endif
-
 #define BUNCH_NODE_CACHE_MAX_SIZE (1024)
 #define UTCP_MAX_PACKET 1024
 
@@ -44,4 +40,11 @@ struct utcp_channel
 	int32_t InReliable;
 
 	int8_t CloseReason;
+};
+
+struct utcp_open_channels
+{
+	int32_t cap;
+	int32_t num;
+	uint16_t* channels;
 };

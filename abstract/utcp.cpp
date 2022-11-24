@@ -1,17 +1,12 @@
 #include "utcp.hpp"
 extern "C" {
+#include "utcp/bit_buffer.h"
 #include "utcp/utcp_def_internal.h"
 }
+#include <algorithm>
 
 namespace utcp
 {
-enum
-{
-	MAX_SINGLE_BUNCH_SIZE_BITS = 7265, // Connection->GetMaxSingleBunchSizeBits();
-	MAX_SINGLE_BUNCH_SIZE_BYTES = MAX_SINGLE_BUNCH_SIZE_BITS / 8,
-	MAX_PARTIAL_BUNCH_SIZE_BITS = MAX_SINGLE_BUNCH_SIZE_BYTES * 8,
-};
-
 void event_handler::add_elapsed_time(int64_t delta_time_ns)
 {
 	utcp_add_elapsed_time(delta_time_ns);
@@ -24,6 +19,15 @@ void event_handler::config(decltype(utcp_config::on_log) log_fn)
 		auto handler = static_cast<event_handler*>(userdata);
 		handler->on_accept(reconnect);
 	};
+	config->on_connect = [](struct utcp_connection* fd, void* userdata, bool reconnect) {
+		auto handler = static_cast<event_handler*>(userdata);
+		handler->on_connect(reconnect);
+	};
+	config->on_disconnect = [](struct utcp_connection* fd, void* userdata, int close_reason) {
+		auto handler = static_cast<event_handler*>(userdata);
+		handler->on_disconnect(close_reason);
+	};
+
 	config->on_outgoing = [](void* fd, void* userdata, const void* data, int len) {
 		auto handler = static_cast<event_handler*>(userdata);
 		handler->on_outgoing(data, len);
@@ -39,11 +43,27 @@ void event_handler::config(decltype(utcp_config::on_log) log_fn)
 	config->on_log = log_fn;
 }
 
+void event_handler::enbale_dump_data(bool enable)
+{
+	auto config = utcp_get_config();
+	config->EnableDump = enable;
+}
+
 event_handler::~event_handler()
 {
 }
 
 void event_handler::on_accept(bool reconnect)
+{
+	throw;
+}
+
+void event_handler::on_connect(bool reconnect)
+{
+	throw;
+}
+
+void event_handler::on_disconnect(int close_reason)
 {
 	throw;
 }
@@ -105,10 +125,14 @@ void conn::flush_incoming_cache()
 
 packet_id_range conn::send_bunch(large_bunch* bunch)
 {
-	// TODO
-	packet_id_range range;
-	range.first = utcp_send_bunch(_utcp_fd, bunch);
-	range.last = range.first;
+	packet_id_range range{packet_id_range::INDEX_NONE, packet_id_range::INDEX_NONE};
+	for (auto& sub : *bunch)
+	{
+		auto packet_id = utcp_send_bunch(_utcp_fd, bunch);
+		if (range.first == packet_id_range::INDEX_NONE)
+			range.first = packet_id;
+		range.last = packet_id;
+	}
 	return range;
 }
 
@@ -120,6 +144,11 @@ void conn::send_flush()
 bool conn::same_auth_cookie(const uint8_t* auth_cookie)
 {
 	return memcmp(_utcp_fd->AuthorisedCookie, auth_cookie, sizeof(_utcp_fd->AuthorisedCookie)) == 0;
+}
+
+utcp_connection* conn::get_fd()
+{
+	return _utcp_fd;
 }
 
 void conn::flush_packet_order_cache(bool forced_flush)
@@ -166,7 +195,12 @@ void listener::incoming(const char* address, uint8_t* data, int count)
 
 void listener::accept(conn* c, bool reconnect)
 {
-	utcp_listener_accept(_utcp_fd, c->_utcp_fd, reconnect);
+	utcp_listener_accept(_utcp_fd, c->get_fd(), reconnect);
+}
+
+utcp_listener* listener::get_fd()
+{
+	return _utcp_fd;
 }
 
 void listener::on_accept(bool reconnect)
@@ -178,6 +212,53 @@ void listener::on_accept(bool reconnect)
 	}
 	auto c = new conn;
 	accept(c, reconnect);
+}
+
+static inline size_t bitslen2byteslen(size_t bits_len)
+{
+	return (bits_len + 7) / 8;
+}
+
+large_bunch::large_bunch(const uint8_t* data, size_t data_bits_len)
+{
+	memset(this, 0, sizeof(*this));
+
+	auto data_bytes_len = bitslen2byteslen(data_bits_len);
+	if (data_bytes_len > sizeof(ExtData))
+		throw;
+
+	if (data_bits_len > MAX_PARTIAL_BUNCH_SIZE_BITS)
+	{
+		assert(data_bytes_len < sizeof(ExtData));
+		memcpy(ExtData, data, data_bytes_len);
+		ExtDataBitsLen = (uint32_t)data_bits_len;
+	}
+	else
+	{
+		assert(data_bytes_len < sizeof(Data));
+		memcpy(Data, data, data_bytes_len);
+		DataBitsLen = (uint32_t)data_bits_len;
+	}
+}
+
+large_bunch::large_bunch(utcp_bunch* const bunches[], int count)
+{
+	memcpy(this, bunches[0], sizeof(utcp_bunch));
+	ExtDataBitsLen = 0;
+	if (count == 1)
+		return;
+
+	struct bitbuf buf;
+	bitbuf_write_init(&buf, ExtData, sizeof(ExtData));
+	for (int i = 0; i < count; ++i)
+	{
+		auto bunch = bunches[i];
+		assert(bunch->bPartial);
+		assert(bunch->bPartialInitial == ((i == 0) ? 1 : 0));
+		assert(bunch->bPartialFinal == ((i == (count - 1)) ? 1 : 0));
+		ExtDataBitsLen += bunch->DataBitsLen;
+		bitbuf_write_bits(&buf, bunch->Data, bunch->DataBitsLen);
+	}
 }
 
 large_bunch::iterator large_bunch::begin()
@@ -193,15 +274,41 @@ large_bunch::iterator large_bunch::end()
 	large_bunch::iterator it;
 	it.ref = this;
 	it.pos = 1;
+
 	if (ExtDataBitsLen > 0)
 	{
-
+		auto bytes_len = (int)bitslen2byteslen(ExtDataBitsLen);
+		it.pos = bytes_len / MAX_SINGLE_BUNCH_SIZE_BYTES + 1;
 	}
 	return it;
 }
 
 utcp_bunch& large_bunch::sub_bunch(int pos)
 {
+	if (ExtDataBitsLen == 0)
+	{
+		assert(pos == 0);
+		return *this;
+	}
+
+	int last = ExtDataBitsLen / MAX_PARTIAL_BUNCH_SIZE_BITS;
+	this->bPartial = last > 0;
+	this->bPartialInitial = pos == 0;
+	this->bPartialFinal = pos == last;
+
+	if (pos == last)
+	{
+		int offset = pos * MAX_SINGLE_BUNCH_SIZE_BYTES;
+		int left = std::min<int>(sizeof(this->ExtData) - offset, MAX_SINGLE_BUNCH_SIZE_BYTES);
+		memcpy(this->Data, this->ExtData + offset, left);
+		this->DataBitsLen = ExtDataBitsLen - MAX_PARTIAL_BUNCH_SIZE_BITS * pos;
+	}
+	else
+	{
+		int offset = pos * MAX_SINGLE_BUNCH_SIZE_BYTES;
+		memcpy(this->Data, this->ExtData + offset, MAX_SINGLE_BUNCH_SIZE_BYTES);
+		this->DataBitsLen = MAX_PARTIAL_BUNCH_SIZE_BITS;
+	}
 	return *this;
 }
 

@@ -20,11 +20,21 @@ static inline int32_t GetAdjustedSizeBits(int32_t InSizeBits)
 }
 
 // StatelessConnectHandlerComponent::GenerateCookie
+extern void sha1_hmac_buffer(const void* Key, uint32_t KeySize, const void* Data, uint64_t DataSize, uint8_t* OutHash);
 static void GenerateCookie(struct utcp_listener* fd, const char* ClientAddress, uint8_t SecretId, double Timestamp, uint8_t* OutCookie)
 {
-	// ClientAddress
-	// TODO Need FSHA1::HMACBuffer
-	memcpy(OutCookie, fd->HandshakeSecret[!!SecretId], COOKIE_BYTE_SIZE);
+	size_t ClientAddressLen = strlen(ClientAddress);
+	uint8_t CookieData[sizeof(double) + sizeof(int32_t) + ADDRSTR_PORT_SIZE];
+	size_t Offset = 0; 
+
+	memcpy(CookieData + Offset, &Timestamp, sizeof(Timestamp));
+	Offset += sizeof(Timestamp);
+	memcpy(CookieData + Offset, &ClientAddressLen, sizeof(ClientAddressLen));
+	Offset += sizeof(ClientAddressLen);
+	memcpy(CookieData + Offset, ClientAddress, ClientAddressLen);
+	Offset += ClientAddressLen;
+
+	sha1_hmac_buffer(fd->HandshakeSecret[!!SecretId], SECRET_BYTE_SIZE, CookieData, Offset, OutCookie);
 }
 
 // StatelessConnectHandlerComponent::SendConnectChallenge
@@ -108,7 +118,7 @@ static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_conn
 		utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
-static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie)
+static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie, bool bIsClient)
 {
 	bool bValidPacket = false;
 	size_t BitsLeft = bitbuf->size - bitbuf->num;
@@ -142,6 +152,7 @@ static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHand
 	{
 		if (!bitbuf_read_bit(bitbuf, bOutRestartHandshake))
 			return false;
+		bValidPacket = bOutRestartHandshake && bIsClient;
 	}
 
 	return bValidPacket;
@@ -188,7 +199,7 @@ int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct
 	uint8_t Cookie[COOKIE_BYTE_SIZE];
 	uint8_t OrigCookie[COOKIE_BYTE_SIZE];
 
-	bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie);
+	bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, false);
 	if (!bHandshakePacket)
 	{
 		return -4;
@@ -351,8 +362,7 @@ int Incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		uint8_t Cookie[COOKIE_BYTE_SIZE];
 		uint8_t OrigCookie[COOKIE_BYTE_SIZE];
 
-		bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie);
-		bHandshakePacket = bRestartHandshake && fd->mode == Client; // ParseHandshakePacket 不在依赖fd
+		bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, fd->mode == Client);
 		if (!bHandshakePacket)
 		{
 			return -4;
@@ -394,7 +404,7 @@ int Incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 
 					// Now finish initializing the handler - flushing the queued packet buffer in the process.
 					utcp_set_state(fd, Initialized);
-
+					utcp_on_connect(fd, fd->bRestartedHandshake);
 					// TODO 连接成功发包 PacketHandler::HandlerComponentInitialized  -->PacketHandler::HandlerInitialized(通知业务层发送
 					// UPendingNetGame::SendInitialJoin) Initialized();
 					fd->bRestartedHandshake = false;

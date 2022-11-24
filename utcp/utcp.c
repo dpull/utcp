@@ -94,7 +94,9 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 
 	int ret = IncomingConnectionless(fd, address, &bitbuf);
 	if (ret)
+	{
 		return ret;
+	}
 
 	assert(bitbuf.num == bitbuf.size);
 
@@ -107,7 +109,7 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 	{
 		if (bRestartedHandshake)
 		{
-			utcp_accept(fd, true);
+			utcp_on_accept(fd, true);
 		}
 
 		// bIgnorePacket = false
@@ -116,7 +118,7 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 	{
 		if (!bRestartedHandshake)
 		{
-			utcp_accept(fd, false);
+			utcp_on_accept(fd, false);
 		}
 		ResetChallengeData(fd);
 	}
@@ -157,6 +159,7 @@ void utcp_init(struct utcp_connection* fd, void* userdata)
 void utcp_uninit(struct utcp_connection* fd)
 {
 	utcp_closeall_channel(fd);
+	open_channel_uninit(&fd->open_channels);
 }
 
 void utcp_connect(struct utcp_connection* fd)
@@ -232,10 +235,6 @@ int utcp_update(struct utcp_connection* fd)
 			}
 		}
 	}
-	else
-	{
-		
-	}
 	return 0;
 }
 
@@ -272,14 +271,15 @@ int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 // UNetConnection::FlushNet
 int utcp_send_flush(struct utcp_connection* fd)
 {
+	if (fd->mode == Client && fd->state != Initialized)
+		return 0;
+
 	int64_t now = utcp_gettime_ms();
 	if (fd->SendBufferBitsNum == 0 && !fd->HasDirtyAcks && (now - fd->LastSendTime) < KeepAliveTime)
 		return 0;
 
 	if (fd->SendBufferBitsNum == 0)
-	{
 		WriteBitsToSendBuffer(fd, NULL, 0);
-	}
 
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));

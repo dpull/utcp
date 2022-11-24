@@ -11,6 +11,10 @@
 
 extern struct utcp_config* utcp_get_config();
 
+#if defined(__linux) || defined(__APPLE__)
+#define _countof(array) (sizeof(array) / sizeof(array[0]))
+#endif
+
 enum log_level
 {
 	NoLogging = 0,
@@ -124,12 +128,34 @@ static inline void utcp_connection_outgoing(struct utcp_connection* fd, const vo
 
 #define utcp_outgoing(fd, buffer, len) _Generic((fd), struct utcp_listener * : utcp_listener_outgoing, struct utcp_connection * : utcp_connection_outgoing)(fd, buffer, len)
 
-static inline void utcp_accept(struct utcp_listener* fd, bool reconnect)
+static inline void utcp_on_accept(struct utcp_listener* fd, bool reconnect)
 {
+	utcp_log(Log, "accept:%s, reconnect=%d", fd->LastChallengeSuccessAddress, reconnect);
+
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_accept)
 	{
 		utcp_config->on_accept(fd, fd->userdata, reconnect);
+	}
+}
+
+static inline void utcp_on_connect(struct utcp_connection* fd, bool reconnect)
+{
+	utcp_log(Log, "connected, reconnect=%d", reconnect);
+
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (utcp_config->on_connect)
+	{
+		utcp_config->on_connect(fd, fd->userdata, reconnect);
+	}
+}
+
+static inline void utcp_on_disconnect(struct utcp_connection* fd, int close_reason)
+{
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (utcp_config->on_disconnect)
+	{
+		utcp_config->on_disconnect(fd, fd->userdata, close_reason);
 	}
 }
 
@@ -150,25 +176,4 @@ static inline void utcp_delivery_status(struct utcp_connection* fd, int32_t pack
 	{
 		utcp_config->on_delivery_status(fd, fd->userdata, packet_id, ack);
 	}
-}
-
-static inline int binary_search(const void* key, const void* base, size_t num, size_t element_size, int (*compar)(const void*, const void*))
-{
-	int lo = 0;
-	int hi = (int)num - 1;
-
-	while (lo <= hi)
-	{
-		// i might overflow if lo and hi are both large positive numbers.
-		int i = lo + ((hi - lo) >> 1);
-
-		int c = compar(key, (char*)base + i * element_size);
-		if (c == 0)
-			return i;
-		if (c > 0)
-			lo = i + 1;
-		else
-			hi = i - 1;
-	}
-	return ~lo;
 }

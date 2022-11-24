@@ -12,5 +12,4 @@ int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf);
 int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len);
 void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf);
 void WriteFinalPacketInfo(struct utcp_connection* fd, struct bitbuf* bitbuf);
-bool check_can_send(struct utcp_connection* fd, struct utcp_bunch* bunches[], int bunches_count);
 int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch);

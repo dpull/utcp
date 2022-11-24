@@ -40,6 +40,7 @@ static struct utcp_channel* utcp_get_channel(struct utcp_connection* fd, struct 
 		{
 			utcp_channel = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
 			fd->Channels[utcp_bunch->ChIndex] = utcp_channel;
+			open_channel_add(&fd->open_channels, utcp_bunch->ChIndex);
 		}
 		else
 		{
@@ -60,6 +61,7 @@ static void utcp_close_channel(struct utcp_connection* fd, int ChIndex)
 		return;
 	free_utcp_channel(fd->Channels[ChIndex]);
 	fd->Channels[ChIndex] = NULL;
+	open_channel_remove(&fd->open_channels, ChIndex);
 }
 
 void utcp_closeall_channel(struct utcp_connection* fd)
@@ -71,6 +73,7 @@ void utcp_closeall_channel(struct utcp_connection* fd)
 			utcp_close_channel(fd, i);
 		}
 	}
+	assert(fd->open_channels.num == 0);
 }
 
 // UChannel::ReceivedNextBunch
@@ -256,6 +259,19 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		{
 			return -5;
 		}
+
+		// UNetConnection::ReadPacketInfo
+		uint8_t bHasServerFrameTime;
+		if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
+		{
+			return -6;
+		}
+
+		if (bHasServerFrameTime)
+		{
+			uint8_t FrameTimeByte = 0;
+			bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1);
+		}
 	}
 
 	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
@@ -285,16 +301,6 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	// Update incoming sequence data and deliver packet notifications
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
 	packet_notify_Update(fd, &fd->packet_notify, &notification_header);
-
-	uint8_t bHasServerFrameTime;
-	if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
-		return -6;
-
-	if (bHasServerFrameTime)
-	{
-		uint8_t FrameTimeByte = 0;
-		bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1);
-	}
 
 	bool bSkipAck = false;
 	while (bitbuf->num < bitbuf->size)

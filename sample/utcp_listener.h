@@ -37,10 +37,27 @@ class udp_utcp_listener : public utcp::listener
   protected:
 	virtual void on_accept(bool reconnect) override;
 	virtual void on_outgoing(const void* data, int len) override;
+	virtual utcp::conn* new_conn() = 0;
 	void proc_recv_queue();
 
-  private:
+  protected:
 	std::chrono::time_point<std::chrono::high_resolution_clock> now;
 	udp_socket socket;
 	std::unordered_map<struct sockaddr_in, utcp::conn*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
+};
+
+template <typename T>
+class udp_utcp_listener_impl : public udp_utcp_listener
+{
+  protected:
+	virtual utcp::conn* new_conn()
+	{
+		return new T;
+	}
+
+	virtual void accept(utcp::conn* c, bool reconnect) override
+	{
+		static_cast<T*>(c)->bind(socket.socket_fd, &socket.dest_addr, socket.dest_addr_len);
+		udp_utcp_listener::accept(c, reconnect);
+	}
 };

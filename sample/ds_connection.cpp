@@ -6,11 +6,73 @@ extern "C" {
 #include <cassert>
 #include <cstring>
 
+void ue_codec::reset(uint8_t* data, size_t len)
+{
+	this->pos = data;
+	this->end = data + len;
+}
+
+ue_codec& ue_codec::operator<<(const uint8_t value)
+{
+	assert(pos + sizeof(value) < end);
+	*pos = value;
+	pos++;
+	return *this;
+}
+
+ue_codec& ue_codec::operator<<(const uint32_t value)
+{
+	assert(pos + sizeof(value) <= end);
+	*((uint32_t*)pos) = value;
+	pos += sizeof(value);
+	return *this;
+}
+
+ue_codec& ue_codec::operator<<(const std::string& value)
+{
+	auto size = (uint32_t)value.size();
+	*this << size;
+	assert(pos + size <= end);
+	memcpy(pos, value.c_str(), size);
+	pos += size;
+	return *this;
+}
+
+ue_codec& ue_codec::operator>>(uint8_t& value)
+{
+	assert(pos + sizeof(value) < end);
+	value = *pos;
+	pos++;
+	return *this;
+}
+
+ue_codec& ue_codec::operator>>(uint32_t& value)
+{
+	assert(pos + sizeof(value) <= end);
+	value = *((uint32_t*)pos);
+	pos += sizeof(value);
+	return *this;
+}
+
+ue_codec& ue_codec::operator>>(std::string& value)
+{
+	uint32_t size;
+	*this >> size;
+	assert(pos + size <= end);
+	value = std::string((char*)pos, size);
+	pos += size;
+	return *this;
+}
+
 void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len)
 {
 	memcpy(&dest_addr, addr, addr_len);
 	dest_addr_len = addr_len;
 	socket_fd = fd;
+}
+
+void ds_connection::on_disconnect(int close_reason)
+{
 }
 
 void ds_connection::on_outgoing(const void* data, int len)
@@ -58,16 +120,12 @@ void ds_connection::on_delivery_status(int32_t packet_id, bool ack)
 
 void ds_connection::send_data()
 {
-	utcp::large_bunch bunch;
-	memset(&bunch, 0, sizeof(bunch));
+	auto len = uint16_t(codec.pos - send_buffer);
+	utcp::large_bunch bunch(send_buffer, len);
 	bunch.NameIndex = 255;
 	bunch.ChIndex = 0;
 	bunch.bReliable = 1;
 	bunch.ExtDataBitsLen = 0;
-
-	auto len = uint16_t(codec.pos - send_buffer);
-	bunch.DataBitsLen = len * 8;
-	memcpy(bunch.Data, send_buffer, len);
 
 	auto ret = send_bunch(&bunch);
 	log("send bunch %d\n", ret.first);

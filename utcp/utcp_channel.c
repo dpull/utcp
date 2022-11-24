@@ -313,3 +313,89 @@ int get_partial_bunch(struct utcp_channel* utcp_channel, struct utcp_bunch* bunc
 	assert(bunches[count - 1]->bPartialFinal);
 	return count;
 }
+
+static int binary_search(const void* key, const void* base, size_t num, size_t element_size, int (*compar)(const void*, const void*))
+{
+	int lo = 0;
+	int hi = (int)num - 1;
+
+	while (lo <= hi)
+	{
+		// i might overflow if lo and hi are both large positive numbers.
+		int i = lo + ((hi - lo) >> 1);
+
+		int c = compar(key, (char*)base + i * element_size);
+		if (c == 0)
+			return i;
+		if (c > 0)
+			lo = i + 1;
+		else
+			hi = i - 1;
+	}
+	return ~lo;
+}
+
+static int uint16_less(const void* l, const void* r)
+{
+	return *(uint16_t*)l - *(uint16_t*)r;
+}
+
+static bool open_channel_resize(struct utcp_open_channels* utcp_open_channels)
+{
+	if (utcp_open_channels->num < utcp_open_channels->cap)
+		return true;
+
+	assert(utcp_open_channels->num == utcp_open_channels->cap);
+
+	int cap = utcp_open_channels->cap;
+	assert((!!cap) == (!!utcp_open_channels->channels));
+
+	cap = cap != 0 ? cap : 16;
+	cap *= 2;
+	assert(cap > 0 && cap < DEFAULT_MAX_CHANNEL_SIZE * 2);
+
+	uint16_t* channels = utcp_realloc(utcp_open_channels->channels, cap);
+	if (!channels)
+		return false;
+	utcp_open_channels->channels = channels;
+	utcp_open_channels->cap = cap;
+	return true;
+}
+
+void open_channel_uninit(struct utcp_open_channels* utcp_open_channels)
+{
+	utcp_realloc(utcp_open_channels->channels, 0);
+}
+
+bool open_channel_add(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex)
+{
+	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
+	if (pos >= 0)
+		return true;
+
+	if (!open_channel_resize(utcp_open_channels))
+		return false;
+
+	pos = ~pos;
+
+	uint16_t* src = utcp_open_channels->channels + pos;
+	uint16_t* dst = src + 1;
+	int count = utcp_open_channels->num - pos;
+	memmove(dst, src, count * sizeof(uint16_t));
+	utcp_open_channels->channels[pos] = ChIndex;
+	utcp_open_channels->num++;
+	return true;
+}
+
+bool open_channel_remove(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex)
+{
+	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
+	if (pos < 0)
+		return false;
+	uint16_t* dst = utcp_open_channels->channels + pos;
+	uint16_t* src = dst + 1;
+	int count = utcp_open_channels->num - pos - 1;
+	memmove(dst, src, count * sizeof(uint16_t));
+	utcp_open_channels->num--;
+	return true;
+}

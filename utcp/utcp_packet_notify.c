@@ -26,6 +26,7 @@ enum
 	SeqShift = AckSeqShift + SequenceNumberBits,
 };
 
+// FPackedHeader::Pack
 static uint32_t PackedHeader_Pack(uint16_t Seq, uint16_t AckedSeq, size_t HistoryWordCount)
 {
 	uint32_t Packed = 0u;
@@ -37,6 +38,7 @@ static uint32_t PackedHeader_Pack(uint16_t Seq, uint16_t AckedSeq, size_t Histor
 	return Packed;
 }
 
+// FPackedHeader::UnPack
 static void PackedHeader_UnPack(uint32_t Packed, uint16_t* Seq, uint16_t* AckedSeq, size_t* HistoryWordCount)
 {
 	*Seq = (Packed >> SeqShift & SeqNumberMask);
@@ -51,6 +53,8 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	if (AckCount <= ring_buffer_num_items(&packet_notify->AckRecord))
 	{
 		union sent_ack_data AckData;
+		AckData.Value = 0;
+
 		while (AckCount > 0)
 		{
 			AckCount--;
@@ -75,14 +79,13 @@ static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
 	// Advance OutAckPacketId
 	fd->OutAckPacketId = AckPacketId;
 
-	// TODO 不要全遍历
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int i = 0; i < _countof(fd->Channels); ++i)
+	for (int i = 0; i < fd->open_channels.num; ++i)
 	{
-		if (!fd->Channels[i])
-			continue;
+		uint16_t ChIndex = fd->open_channels.channels[i];
+		assert(fd->Channels[ChIndex]);
 
-		struct utcp_channel* utcp_channel = fd->Channels[i];
+		struct utcp_channel* utcp_channel = fd->Channels[ChIndex];
 		int count = remove_ougoing_data(utcp_channel, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 		for (int i = 0; i < count; ++i)
 		{
@@ -96,14 +99,13 @@ static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
 static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
 {
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int i = 0; i < _countof(fd->Channels); ++i)
+	for (int i = 0; i < fd->open_channels.num; ++i)
 	{
-		if (!fd->Channels[i])
-			continue;
+		uint16_t ChIndex = fd->open_channels.channels[i];
+		assert(fd->Channels[ChIndex]);
 
-		// TODO 不要全遍历
 		// UChannel::ReceivedNak
-		struct utcp_channel* utcp_channel = fd->Channels[i];
+		struct utcp_channel* utcp_channel = fd->Channels[ChIndex];
 		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 		for (int i = 0; i < count; ++i)
 		{
@@ -114,7 +116,6 @@ static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
 			utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
 		}
 	}
-
 	utcp_delivery_status(fd, NakPacketId, false);
 }
 
@@ -155,6 +156,8 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 
 		const bool bReportAcked = packet_notify->InAckSeq == AckedSeq ? IsAck : false;
 
+		utcp_log(Verbose, "packet_notify_AckSeq:%hd, %s", packet_notify->InAckSeq, bReportAcked ? "ACK" : "NAK");
+
 		// TSequenceHistory<HistorySize>::AddDeliveryStatus
 		{
 			SequenceHistoryWord Carry = bReportAcked ? 1u : 0u;
@@ -173,7 +176,7 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 }
 
 // auto HandlePacketNotification = [&Header, &ChannelsToClose, this](FNetPacketNotify::SequenceNumberT AckedSequence, bool bDelivered)
-void HandlePacketNotification(struct utcp_connection* fd, uint16_t AckedSequence, bool bDelivered)
+static void HandlePacketNotification(struct utcp_connection* fd, uint16_t AckedSequence, bool bDelivered)
 {
 	// Increase LastNotifiedPacketId, this is a full packet Id
 	++fd->LastNotifiedPacketId;
@@ -240,10 +243,11 @@ int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* p
 				// TSequenceHistory<HistorySize>::IsDelivered
 				bool IsDelivered;
 				{
-					assert(AckCount < MaxSequenceHistoryLength);
+					size_t Index = AckCount;
+					assert(Index < MaxSequenceHistoryLength);
 
-					const size_t WordIndex = AckCount / SequenceHistoryBitsPerWord;
-					const SequenceHistoryWord WordMask = ((SequenceHistoryWord)(1) << (AckCount & (SequenceHistoryBitsPerWord - 1)));
+					const size_t WordIndex = Index / SequenceHistoryBitsPerWord;
+					const SequenceHistoryWord WordMask = ((SequenceHistoryWord)(1) << (Index & (SequenceHistoryBitsPerWord - 1)));
 
 					IsDelivered = (packet_notify->InSeqHistory[WordIndex] & WordMask) != 0u;
 				}
@@ -283,7 +287,7 @@ uint16_t packet_notify_CommitAndIncrementOutSeq(struct packet_notify* packet_not
 }
 
 // FNetPacketNotify::GetCurrentSequenceHistoryLength
-size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify* packet_notify)
+static size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify* packet_notify)
 {
 	if (seq_num_greater_equal(packet_notify->InAckSeq, packet_notify->InAckSeqAck))
 	{

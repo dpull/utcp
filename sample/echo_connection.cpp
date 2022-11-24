@@ -1,0 +1,88 @@
+﻿#include "echo_connection.h"
+#include "utils.h"
+#include <cassert>
+#include <cstring>
+
+void echo_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len)
+{
+	memcpy(&socket.dest_addr, addr, addr_len);
+	socket.dest_addr_len = addr_len;
+	socket.socket_fd = fd;
+}
+
+bool echo_connection::async_connnect(const char* ip, int port)
+{
+	if (!socket.connnect(ip, port))
+		return false;
+
+	connect();
+	return true;
+}
+
+void echo_connection::send(int num)
+{
+	utcp::large_bunch bunch((uint8_t*)&num, sizeof(num) * 8);
+	bunch.NameIndex = 255;
+	bunch.ChIndex = 0;
+	bunch.bOpen = 1;
+	bunch.bReliable = 1;
+	bunch.ExtDataBitsLen = 0;
+
+	auto ret = send_bunch(&bunch);
+	log("[snd]\t[%p]\t%d\t%d", this, ret.first, num);
+}
+
+void echo_connection::update()
+{
+	proc_recv_queue();
+	utcp::conn::update();
+}
+
+void echo_connection::on_connect(bool reconnect)
+{
+	send(1);
+}
+
+void echo_connection::on_disconnect(int close_reason)
+{
+}
+
+void echo_connection::on_outgoing(const void* data, int len)
+{
+	int loss = rand() % 100;
+	if (loss < 30)
+	{
+		log("[out]\t[%p]\tloss", this);
+		return;
+	}
+
+	assert(socket.dest_addr_len > 0);
+	sendto(socket.socket_fd, (const char*)data, len, 0, (sockaddr*)&socket.dest_addr, socket.dest_addr_len);
+}
+
+void echo_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
+{
+	int num;
+
+	assert(count == 1);
+	assert(bunches[0]->DataBitsLen == sizeof(num) * 8);
+	memcpy(&num, bunches[0]->Data, sizeof(num));
+	send(num + 1);
+}
+
+void echo_connection::on_delivery_status(int32_t packet_id, bool ack)
+{
+	log("[sts]\t[%p]\t%d\t%s", this, packet_id, ack ? "ACK" : "NAK");
+}
+
+void echo_connection::proc_recv_queue()
+{
+	auto& proc_queue = socket.swap();
+
+	for (auto& datagram : proc_queue)
+	{
+		incoming(datagram.data, datagram.data_len);
+	}
+
+	proc_queue.clear();
+}

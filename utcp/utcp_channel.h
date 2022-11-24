@@ -31,3 +31,10 @@ enum merge_partial_result
 enum merge_partial_result merge_partial_data(struct utcp_channel* utcp_channel, struct utcp_bunch_node* utcp_bunch_node, bool* bOutSkipAck);
 void clear_partial_data(struct utcp_channel* utcp_channel);
 int get_partial_bunch(struct utcp_channel* utcp_channel, struct utcp_bunch* bunches[], int bunches_size);
+
+void open_channel_uninit(struct utcp_open_channels* utcp_open_channels);
+bool open_channel_add(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex);
+bool open_channel_remove(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex);
+
+
+

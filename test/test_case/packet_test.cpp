@@ -6,7 +6,7 @@ extern "C" {
 #include "gtest/gtest.h"
 #include <memory>
 
-static std::vector<char> last_send;
+static std::vector<uint8_t> last_send;
 static std::vector<struct utcp_bunch> last_recv;
 
 struct packet : public ::testing::Test
@@ -74,7 +74,45 @@ TEST_F(packet, accept_hello)
 
 	ASSERT_EQ(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)), -8);
 }
+/*
+TEST_F(packet, write_hello)
+{
+	uint8_t packet_hello[] = {0x80, 0x00, 0xb5, 0x78, 0x01, 0x00, 0x00, 0x00, 0xfe, 0x6f, 0x02, 0xe0, 0xe2, 0xff,
+							  0x02, 0x50, 0x00, 0x20, 0x60, 0xa6, 0x0f, 0x93, 0x11, 0x00, 0x00, 0x00, 0x60};
 
+	utcp_fd_rtti fd;
+	utcp_init(fd.get(), nullptr);
+	utcp_sequence_init(fd.get(), 10245, 12054);
+
+	Hello hello;
+	hello.MsgType = 0;
+	hello.IsLittleEndian = 1;
+	hello.RemoteNetworkVersion = 2358803763;
+	hello.EncryptionTokenStrLen = 0;
+
+	struct utcp_bunch bunch;
+	memset(&bunch, 0, sizeof(bunch));
+	bunch.NameIndex = 255;
+	bunch.ChIndex = 0;
+	bunch.bReliable = 1;
+	bunch.bOpen = 1;
+	bunch.DataBitsLen = sizeof(hello) * 8;
+	memcpy(bunch.Data, &hello, sizeof(hello));
+	utcp_send_bunch(fd.get(), &bunch);
+	utcp_send_flush(fd.get());
+	for (int i = 0; i < last_send.size(); ++i)
+	{
+		int ii = last_send[i];
+		int j = packet_hello[i];
+		if (ii != j)
+		{
+			printf("");
+		}
+	}
+	ASSERT_EQ(sizeof(packet_hello), last_send.size());
+	ASSERT_EQ(0, memcmp(packet_hello, last_send.data(), sizeof(packet_hello)));
+}
+*/
 TEST_F(packet, accept_hello_login)
 {
 

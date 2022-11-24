@@ -4,6 +4,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -13,6 +14,8 @@ extern "C" {
 struct utcp_config
 {
 	void (*on_accept)(struct utcp_listener* fd, void* userdata, bool reconnect);
+	void (*on_connect)(struct utcp_connection* fd, void* userdata, bool reconnect);
+	void (*on_disconnect)(struct utcp_connection* fd, void* userdata, int close_reason);
 	void (*on_outgoing)(void* fd, void* userdata, const void* data, int len); // "void* fd" is "struct utcp_listener* fd" or "struct utcp_connection* fd"
 	void (*on_recv_bunch)(struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count);
 	void (*on_delivery_status)(struct utcp_connection* fd, void* userdata, int32_t packet_id, bool ack);

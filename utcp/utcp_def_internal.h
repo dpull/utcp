@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "utcp_bunch_def.h"
+#include "utcp_def.h"
 #include "utcp_packet_notify_def.h"
 
 enum
@@ -18,6 +19,7 @@ enum
 	SECRET_BYTE_SIZE = 64,
 	SECRET_COUNT = 2,
 	COOKIE_BYTE_SIZE = 20,
+	ADDRSTR_PORT_SIZE = 64, // INET6_ADDRSTRLEN + PORT_LEN
 };
 
 #define SECRET_UPDATE_TIME 15.f
@@ -72,8 +74,8 @@ struct utcp_listener
 	/** The initial client sequence value, from the last successful handshake */
 	int32_t LastClientSequence;
 
-	/** INET6_ADDRSTRLEN + PORT_LEN */
-	char LastChallengeSuccessAddress[64];
+	
+	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 };
 
 struct utcp_connection
@@ -108,7 +110,7 @@ struct utcp_connection
 	/** The initial client sequence value, from the last successful handshake */
 	int32_t LastClientSequence;
 
-	char LastChallengeSuccessAddress[64]; // INET6_ADDRSTRLEN + PORT
+	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 
 	/** The SecretId value of the last challenge response sent */
 	uint8_t LastSecretId;
@@ -134,6 +136,7 @@ struct utcp_connection
 	int32_t InitOutReliable;
 	int32_t InitInReliable;
 	struct utcp_channel* Channels[DEFAULT_MAX_CHANNEL_SIZE];
+	struct utcp_open_channels open_channels;
 
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
 	uint32_t HasDirtyAcks;
