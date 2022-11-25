@@ -28,7 +28,6 @@ struct utcp_listener* utcp_listener_create()
 	return (struct utcp_listener*)utcp_realloc(NULL, sizeof(struct utcp_listener));
 }
 
-
 void utcp_listener_destroy(struct utcp_listener* fd)
 {
 	if (fd)
@@ -127,7 +126,7 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 
 void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
-	memcpy(conn->LastChallengeSuccessAddress, listener->LastChallengeSuccessAddress, sizeof(conn->LastChallengeSuccessAddress));
+	conn->LastChallengeSuccessAddress = 1;
 
 	if (!reconnect)
 	{
@@ -195,6 +194,8 @@ int utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 		return 0;
 	}
 
+	fd->LastReceiveRealtime = utcp_gettime_ms();
+
 	bitbuf.size--;
 	ret = ReceivedPacket(fd, &bitbuf);
 	if (ret != 0)
@@ -209,12 +210,13 @@ int utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 
 int utcp_update(struct utcp_connection* fd)
 {
+	int64_t now = utcp_gettime_ms();
+
 	if (fd->mode == Client)
 	{
-		int64_t now = utcp_gettime_ms();
 		if (fd->state != Initialized && fd->LastClientSendTimestamp != 0)
 		{
-			int64_t LastSendTimeDiff = -fd->LastClientSendTimestamp;
+			int64_t LastSendTimeDiff = now - fd->LastClientSendTimestamp;
 			if (LastSendTimeDiff > 1000)
 			{
 				const bool bRestartChallenge = now - fd->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
@@ -235,6 +237,15 @@ int utcp_update(struct utcp_connection* fd)
 			}
 		}
 	}
+
+	if (fd->mode == Server || (fd->mode == Client && fd->state == Initialized))
+	{
+		if (now - fd->LastReceiveRealtime > InitialConnectTimeout)
+		{
+			utcp_mark_close(fd, ConnectionLost);
+		}
+	}
+
 	return 0;
 }
 
@@ -303,4 +314,11 @@ int utcp_send_flush(struct utcp_connection* fd)
 	fd->OutPacketId++;
 
 	return 0;
+}
+
+void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason)
+{
+	fd->bCloseReason = true;
+	fd->CloseReason = close_reason;
+	utcp_log(Warning, "utcp_mark_close fd=%p, type=%hhu", fd, close_reason);
 }

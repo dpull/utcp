@@ -27,16 +27,11 @@ udp_utcp_listener::~udp_utcp_listener()
 
 bool udp_utcp_listener::listen(const char* ip, int port)
 {
-	now = std::chrono::high_resolution_clock::now();
 	return socket.listen(ip, port);
 }
 
 void udp_utcp_listener::tick()
 {
-	auto cur_now = std::chrono::high_resolution_clock::now();
-	add_elapsed_time((cur_now - now).count());
-	now = cur_now;
-
 	proc_recv_queue();
 	for (auto& it : clients)
 	{

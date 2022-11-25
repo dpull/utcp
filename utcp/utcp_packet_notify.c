@@ -1,4 +1,4 @@
-﻿#include "utcp_packet_notify.h"
+#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
 #include "utcp_channel.h"
 #include "utcp_def_internal.h"
@@ -249,7 +249,7 @@ int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* p
 					const size_t WordIndex = Index / SequenceHistoryBitsPerWord;
 					const SequenceHistoryWord WordMask = ((SequenceHistoryWord)(1) << (Index & (SequenceHistoryBitsPerWord - 1)));
 
-					IsDelivered = (packet_notify->InSeqHistory[WordIndex] & WordMask) != 0u;
+					IsDelivered = (notification_header->History[WordIndex] & WordMask) != 0u;
 				}
 
 				// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(),
@@ -349,6 +349,8 @@ int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	{
 		return -2;
 	}
+	
+	memset(notification_header, 0, sizeof(*notification_header));
 
 	// unpack
 	PackedHeader_UnPack(PackedHeader, &notification_header->Seq, &notification_header->AckedSeq, &notification_header->HistoryWordCount);

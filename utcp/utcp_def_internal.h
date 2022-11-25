@@ -24,6 +24,7 @@ enum
 
 #define SECRET_UPDATE_TIME 15.f
 #define SECRET_UPDATE_TIME_VARIANCE 5.f
+#define InitialConnectTimeout 120 * 1000
 
 // The maximum allowed lifetime (in seconds) of any one handshake cookie
 #define MAX_COOKIE_LIFETIME ((SECRET_UPDATE_TIME + SECRET_UPDATE_TIME_VARIANCE) * (float)SECRET_COUNT)
@@ -74,7 +75,6 @@ struct utcp_listener
 	/** The initial client sequence value, from the last successful handshake */
 	int32_t LastClientSequence;
 
-	
 	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 };
 
@@ -83,8 +83,12 @@ struct utcp_connection
 	void* userdata;
 
 	// 握手相关
-	enum utcp_mode mode;
-	enum utcp_state state;
+	uint8_t mode : 2;
+	uint8_t state : 2;
+
+	uint8_t CloseReason : 4;
+	uint8_t bCloseReason : 1;
+	uint8_t LastChallengeSuccessAddress : 1;
 
 	/** Whether or not component handshaking has begun */
 	uint8_t bBeganHandshaking : 1;
@@ -109,8 +113,6 @@ struct utcp_connection
 
 	/** The initial client sequence value, from the last successful handshake */
 	int32_t LastClientSequence;
-
-	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 
 	/** The SecretId value of the last challenge response sent */
 	uint8_t LastSecretId;
@@ -147,5 +149,50 @@ struct utcp_connection
 	int64_t LastSendTime; // Last time a packet was sent, for keepalives.
 
 	/** Stores the bit number where we wrote the dummy packet info in the packet header */
-	size_t HeaderMarkForPacketInfo;
+	// size_t HeaderMarkForPacketInfo;
+};
+
+enum ENetCloseResult
+{
+	/** NetConnection Cleanup was triggered */
+	Cleanup,
+
+	/** Socket send failure */
+	SocketSendFailure,
+
+	/** Attempted to send data before handshake is complete */
+	PrematureSend,
+
+	/** A connection to the net driver has been lost */
+	ConnectionLost,
+
+	/** A connection to the net driver has timed out */
+	ConnectionTimeout,
+
+	/** Packet had zeros in the last byte */
+	ZeroLastByte,
+
+	/** Zero size packet */
+	ZeroSize,
+
+	/** Failed to read PacketHeader */
+	ReadHeaderFail,
+
+	/** Failed to read extra PacketHeader information */
+	ReadHeaderExtraFail,
+
+	/** Sequence mismatch while processing acks */
+	AckSequenceMismatch,
+
+	/** Bunch channel index exceeds maximum channel limit */
+	BunchBadChannelIndex,
+
+	/** Bunch header serialization overflowed */
+	BunchHeaderOverflow,
+
+	/** Bunch data serialization overflowed */
+	BunchDataOverflow,
+
+	/** Reliable buffer overflowed when attempting to send */
+	ReliableBufferOverflow,
 };

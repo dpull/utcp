@@ -41,7 +41,6 @@ class udp_utcp_listener : public utcp::listener
 	void proc_recv_queue();
 
   protected:
-	std::chrono::time_point<std::chrono::high_resolution_clock> now;
 	udp_socket socket;
 	std::unordered_map<struct sockaddr_in, utcp::conn*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
 };

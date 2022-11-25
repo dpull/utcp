@@ -16,9 +16,9 @@ enum
 	MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS = 32 /*PackedHeader*/ + MaxSequenceHistoryLength,
 	MAX_PACKET_INFO_HEADER_BITS = 1 /*bHasPacketInfo*/ + NumBitsForJitterClockTimeInHeader + 1 /*bHasServerFrameTime*/ + 8 /*ServerFrameTime*/,
 	MAX_PACKET_HEADER_BITS = MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS + MAX_PACKET_INFO_HEADER_BITS,
-	MAX_BUNCH_HEADER_BITS = 256,
-	MaxPacketHandlerBits = 2,
-	MAX_SINGLE_BUNCH_SIZE_BITS = (UTCP_MAX_PACKET * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
+	// MAX_BUNCH_HEADER_BITS = 256,
+	// MaxPacketHandlerBits = 2,
+	// MAX_SINGLE_BUNCH_SIZE_BITS = (UTCP_MAX_PACKET * 8) - MAX_BUNCH_HEADER_BITS - MAX_PACKET_TRAILER_BITS - MAX_PACKET_HEADER_BITS - MaxPacketHandlerBits,
 };
 
 static inline int32_t BestSignedDifference(int32_t Value, int32_t Reference, int32_t Max)

@@ -5,7 +5,6 @@
 #include "utcp_sequence_number.h"
 #include "utcp_utils.h"
 #include <assert.h>
-#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -468,7 +467,7 @@ int Incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		}
 		else if (fd->mode == Server)
 		{
-			if (fd->LastChallengeSuccessAddress[0] != '\0')
+			if (fd->LastChallengeSuccessAddress)
 			{
 				// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
 				// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.

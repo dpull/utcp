@@ -9,7 +9,6 @@ struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutR
 	struct utcp_channel* utcp_channel = (struct utcp_channel*)utcp_realloc(NULL, sizeof(*utcp_channel));
 	memset(utcp_channel, 0, sizeof(*utcp_channel));
 
-	utcp_channel->CloseReason = -1;
 	utcp_channel->InReliable = InitInReliable;
 	utcp_channel->OutReliable = InitOutReliable;
 	dl_list_init(&utcp_channel->InRec);

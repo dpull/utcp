@@ -1,5 +1,5 @@
 ﻿#include "ds_connection.h"
-#include "utils.h"
+#include "sample_config.h"
 extern "C" {
 #include "utcp/bit_buffer.h"
 }
@@ -87,7 +87,7 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 	if (bunches[0]->DataBitsLen == 0)
 	{
 		assert(bunches[0]->bClose);
-		log("channel close");
+		log(log_level::Warning, "channel close");
 		return;
 	}
 
@@ -109,13 +109,13 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 		break;
 
 	default:
-		log("on_recv msg_type=%hhd\n", msg_type);
+		log(log_level::Verbose, "on_recv msg_type=%hhd\n", msg_type);
 	}
 }
 
 void ds_connection::on_delivery_status(int32_t packet_id, bool ack)
 {
-	log("on_delivery_status:%d %s\n", packet_id, ack ? "ACK" : "NAK");
+	log(log_level::Verbose, "on_delivery_status:%d %s\n", packet_id, ack ? "ACK" : "NAK");
 }
 
 void ds_connection::send_data()
@@ -128,7 +128,7 @@ void ds_connection::send_data()
 	bunch.ExtDataBitsLen = 0;
 
 	auto ret = send_bunch(&bunch);
-	log("send bunch %d\n", ret.first);
+	log(log_level::Verbose, "send bunch %d\n", ret.first);
 }
 
 // DEFINE_CONTROL_CHANNEL_MESSAGE(Hello, 0, uint8, uint32, FString); // initial client connection message

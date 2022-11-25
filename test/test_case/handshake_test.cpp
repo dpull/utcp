@@ -37,8 +37,6 @@ struct handshake : public ::testing::Test
 TEST_F(handshake, accept)
 {
 	utcp_listener_rtti fd;
-	utcp_add_elapsed_time(10 * 1000 * 1000);
-	utcp_listener_init(fd.get(), nullptr);
 
 	int ret = utcp_listener_incoming(fd.get(), "127.0.0.1:12345", handshake_step1, sizeof(handshake_step1));
 	ASSERT_EQ(ret, 0);
@@ -57,8 +55,7 @@ TEST_F(handshake, accept)
 
 TEST_F(handshake, client)
 {
-	utcp_fd_rtti fd;
-	utcp_init(fd.get(), nullptr);
+	utcp_connection_rtti fd;
 	utcp_connect(fd.get());
 	ASSERT_EQ(last_send.size(), sizeof(handshake_step1));
 	ASSERT_EQ(memcmp(handshake_step1, last_send.data(), last_send.size()), 0);

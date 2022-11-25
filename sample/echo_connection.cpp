@@ -1,5 +1,5 @@
 ﻿#include "echo_connection.h"
-#include "utils.h"
+#include "sample_config.h"
 #include <cassert>
 #include <cstring>
 
@@ -29,7 +29,7 @@ void echo_connection::send(int num)
 	bunch.ExtDataBitsLen = 0;
 
 	auto ret = send_bunch(&bunch);
-	log("[snd]\t[%p]\t%d\t%d", this, ret.first, num);
+	log(log_level::Log, "[snd]\t[%p]\t%d\t%d", this, ret.first, num);
 }
 
 void echo_connection::update()
@@ -50,9 +50,9 @@ void echo_connection::on_disconnect(int close_reason)
 void echo_connection::on_outgoing(const void* data, int len)
 {
 	int loss = rand() % 100;
-	if (loss < 30)
+	if (g_config->outgoing_loss > 0 && loss < g_config->outgoing_loss)
 	{
-		log("[out]\t[%p]\tloss", this);
+		log(log_level::Log, "[out]\t[%p]\tloss", this);
 		return;
 	}
 
@@ -72,7 +72,7 @@ void echo_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int coun
 
 void echo_connection::on_delivery_status(int32_t packet_id, bool ack)
 {
-	log("[sts]\t[%p]\t%d\t%s", this, packet_id, ack ? "ACK" : "NAK");
+	log(log_level::Log, "[sts]\t[%p]\t%d\t%s", this, packet_id, ack ? "ACK" : "NAK");
 }
 
 void echo_connection::proc_recv_queue()

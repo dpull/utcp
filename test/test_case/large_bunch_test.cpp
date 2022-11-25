@@ -1,4 +1,4 @@
-﻿#include "abstract/utcp.hpp"
+#include "abstract/utcp.hpp"
 #include "gtest/gtest.h"
 
 class large_bunch_param_test : public ::testing::TestWithParam<int>
@@ -54,10 +54,10 @@ TEST_P(large_bunch_param_test, test)
 	}
 }
 
-#ifdef LINUX
+#if defined(__linux)
 INSTANTIATE_TEST_CASE_P(test_constructor, large_bunch_param_test, testing::Range(0, utcp::NetMaxConstructedPartialBunchSizeBytes + 1));
 #else
 INSTANTIATE_TEST_CASE_P(test_constructor, large_bunch_param_test,
 						testing::Values(0, utcp::MAX_SINGLE_BUNCH_SIZE_BYTES - 10, utcp::MAX_SINGLE_BUNCH_SIZE_BYTES, utcp::MAX_SINGLE_BUNCH_SIZE_BYTES + 10,
 										utcp::NetMaxConstructedPartialBunchSizeBytes - 10, utcp::NetMaxConstructedPartialBunchSizeBytes));
-#endif // !LINUX
+#endif

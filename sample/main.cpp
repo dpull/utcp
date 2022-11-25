@@ -1,15 +1,25 @@
 ﻿#include "ds_connection.h"
 #include "echo_connection.h"
+#include "sample_config.h"
 #include "utcp_listener.h"
 #include <chrono>
 #include <memory>
 #include <thread>
 
-static int LOG_LEVEL = 6; 
+sample_config* g_config = nullptr;
+
+void config()
+{
+	static sample_config config;
+	g_config = &config;
+
+	g_config->log_level_limit = log_level::Verbose;
+	g_config->outgoing_loss = 100;
+}
 
 static void vlog(int level, const char* fmt, va_list marker)
 {
-	if (level > LOG_LEVEL)
+	if (level > (int)g_config->log_level_limit)
 		return;
 
 	static FILE* fd = nullptr;
@@ -28,31 +38,56 @@ static void vlog(int level, const char* fmt, va_list marker)
 	fprintf(stdout, "\n");
 }
 
-void log(const char* fmt, ...)
+void log(log_level level, char* fmt, ...)
 {
 	va_list marker;
 	va_start(marker, fmt);
-	vlog(0, fmt, marker);
+	vlog((int)level, fmt, marker);
 	va_end(marker);
 }
+
+struct sample_loop
+{
+	std::chrono::time_point<std::chrono::high_resolution_clock> now;
+	int64_t frame = 0;
+
+	sample_loop()
+	{
+		now = std::chrono::high_resolution_clock::now();
+	}
+
+	void tick()
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+		auto cur_now = std::chrono::high_resolution_clock::now();
+		utcp::event_handler::add_elapsed_time((cur_now - now).count());
+		now = cur_now;
+		frame++;
+	}
+
+	bool need_post_tick()
+	{
+		return frame % 10 == 0;
+	}
+};
 
 void ds()
 {
 	std::unique_ptr<udp_utcp_listener> listener(new udp_utcp_listener_impl<ds_connection>);
+	auto now = std::chrono::high_resolution_clock::now();
+	sample_loop loop;
 
 	listener->listen("127.0.0.1", 7777);
 
-	int64_t frame = 0;
 	while (true)
 	{
-		frame++;
+		loop.tick();
 		listener->tick();
-
-		if (frame % 10 == 0)
+		if (loop.need_post_tick())
 		{
 			listener->post_tick();
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 }
 
@@ -60,35 +95,36 @@ void echo()
 {
 	std::unique_ptr<udp_utcp_listener> listener(new udp_utcp_listener_impl<echo_connection>);
 	std::unique_ptr<echo_connection> client(new echo_connection);
+	sample_loop loop;
 
 	listener->listen("127.0.0.1", 8241);
 	client->async_connnect("127.0.0.1", 8241);
 
-	int64_t frame = 0;
 	while (true)
 	{
-		frame++;
+		loop.tick();
+
 		listener->tick();
 		client->update();
 
-		if (frame % 10 == 0)
+		if (loop.need_post_tick())
 		{
 			listener->post_tick();
 			client->flush_incoming_cache();
 			client->send_flush();
-			log("post_tick");
+			log(log_level::Verbose, "post_tick");
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 }
 
 int main(int argc, const char* argv[])
 {
-	log("server start");
+	config();
+	log(log_level::Log, "server start");
 
 	utcp::event_handler::config(vlog);
-	utcp::event_handler::enbale_dump_data(LOG_LEVEL > 5);
-	
+	utcp::event_handler::enbale_dump_data(g_config->log_level_limit >= log_level::Verbose);
+
 	// ds();
 	echo();
 

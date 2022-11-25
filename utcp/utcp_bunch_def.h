@@ -8,7 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define BUNCH_NODE_CACHE_MAX_SIZE (1024)
 #define UTCP_MAX_PACKET 1024
 
 struct utcp_bunch_node
@@ -39,7 +38,8 @@ struct utcp_channel
 	int32_t OutReliable;
 	int32_t InReliable;
 
-	int8_t CloseReason;
+	uint8_t bClose : 1;
+	uint8_t CloseReason : 4;
 };
 
 struct utcp_open_channels
