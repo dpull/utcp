@@ -13,8 +13,8 @@ void config()
 	static sample_config config;
 	g_config = &config;
 
-	g_config->log_level_limit = log_level::Verbose;
-	g_config->outgoing_loss = 100;
+	g_config->log_level_limit = log_level::Log;
+	g_config->outgoing_loss = 50;
 }
 
 static void vlog(int level, const char* fmt, va_list marker)

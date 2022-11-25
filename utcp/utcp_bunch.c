@@ -54,8 +54,6 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 	if (!bitbuf_read_int_packed(bitbuf, &ChIndex))
 		return false;
 
-	if (ChIndex >= DEFAULT_MAX_CHANNEL_SIZE)
-		return false;
 	utcp_bunch->ChIndex = ChIndex;
 
 	BITBUF_READ_BIT(utcp_bunch->bHasPackageMapExports);

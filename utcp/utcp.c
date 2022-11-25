@@ -157,6 +157,7 @@ void utcp_init(struct utcp_connection* fd, void* userdata)
 
 void utcp_uninit(struct utcp_connection* fd)
 {
+	utcp_mark_close(fd, Cleanup);
 	utcp_closeall_channel(fd);
 	open_channel_uninit(&fd->open_channels);
 }
@@ -169,43 +170,43 @@ void utcp_connect(struct utcp_connection* fd)
 	NotifyHandshakeBegin(fd);
 }
 
-// ReceivedRawPacket
-// PacketHandler
-// StatelessConnectHandlerComponent::Incoming
-int utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
+// UNetConnection::ReceivedRawPacket
+bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
 	utcp_dump("ordered_incoming", 0, buffer, len);
 
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 	{
-		return -1;
+		utcp_log(Warning, "[conn:%p]Received packet with 0's in last byte of packet", fd);
+		utcp_mark_close(fd, ZeroLastByte);
+		return false;
 	}
 
-	int ret = Incoming(fd, &bitbuf);
+	int ret = handshake_incoming(fd, &bitbuf);
 	if (ret != 0)
 	{
-		return ret;
+		if (fd->mode != Server)
+			utcp_log(Warning, "[conn:%p]handshake_incoming failed, ret=%d", ret);
+		utcp_mark_close(fd, PacketHandlerIncomingError);
+		return false;
 	}
 
 	size_t left_bits = bitbuf_left_bits(&bitbuf);
 	if (left_bits == 0)
 	{
-		return 0;
+		return true;
 	}
 
 	fd->LastReceiveRealtime = utcp_gettime_ms();
 
 	bitbuf.size--;
 	ret = ReceivedPacket(fd, &bitbuf);
-	if (ret != 0)
-	{
-		return ret;
-	}
+	if (!ret)
+		return false;
 
 	left_bits = bitbuf_left_bits(&bitbuf);
-	assert(left_bits == 0);
-	return 0;
+	return left_bits == 0;
 }
 
 int utcp_update(struct utcp_connection* fd)
@@ -240,13 +241,19 @@ int utcp_update(struct utcp_connection* fd)
 
 	if (fd->mode == Server || (fd->mode == Client && fd->state == Initialized))
 	{
-		if (now - fd->LastReceiveRealtime > InitialConnectTimeout)
+		if (now - fd->LastReceiveRealtime > UTCP_CONNECT_TIMEOUT)
 		{
-			utcp_mark_close(fd, ConnectionLost);
+			utcp_mark_close(fd, ConnectionTimeout);
 		}
 	}
 
-	return 0;
+	utcp_delay_close_channel(fd);
+
+	if (!fd->bClose)
+		return 0;
+
+	utcp_on_disconnect(fd, fd->CloseReason);
+	return -1;
 }
 
 int32_t utcp_peep_packet_id(struct utcp_connection* fd, uint8_t* buffer, int len)
@@ -304,7 +311,7 @@ int utcp_send_flush(struct utcp_connection* fd)
 	WriteFinalPacketInfo(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
-	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;
@@ -316,9 +323,16 @@ int utcp_send_flush(struct utcp_connection* fd)
 	return 0;
 }
 
+bool utcp_send_would_block(struct utcp_connection* fd, int count)
+{
+	return fd->OutPacketId - fd->OutAckPacketId + count >= (MaxSequenceHistoryLength - 2);
+}
+
 void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason)
 {
-	fd->bCloseReason = true;
+	if (fd->bClose)
+		return;
+	fd->bClose = true;
 	fd->CloseReason = close_reason;
 	utcp_log(Warning, "utcp_mark_close fd=%p, type=%hhu", fd, close_reason);
 }

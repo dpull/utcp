@@ -80,9 +80,9 @@ static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
 	fd->OutAckPacketId = AckPacketId;
 
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int i = 0; i < fd->open_channels.num; ++i)
+	for (int j = 0; j < fd->open_channels.num; ++j)
 	{
-		uint16_t ChIndex = fd->open_channels.channels[i];
+		uint16_t ChIndex = fd->open_channels.channels[j];
 		assert(fd->Channels[ChIndex]);
 
 		struct utcp_channel* utcp_channel = fd->Channels[ChIndex];
@@ -99,9 +99,9 @@ static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
 static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
 {
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int i = 0; i < fd->open_channels.num; ++i)
+	for (int j = 0; j < fd->open_channels.num; ++j)
 	{
-		uint16_t ChIndex = fd->open_channels.channels[i];
+		uint16_t ChIndex = fd->open_channels.channels[j];
 		assert(fd->Channels[ChIndex]);
 
 		// UChannel::ReceivedNak
@@ -148,6 +148,7 @@ void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInS
 // FNetPacketNotify::AckSeq
 void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck)
 {
+	AckedSeq = seq_num_init(AckedSeq);
 	assert(AckedSeq == packet_notify->InSeq);
 
 	while (seq_num_greater_than(AckedSeq, packet_notify->InAckSeq))
@@ -347,7 +348,7 @@ int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	uint32_t PackedHeader = 0;
 	if (!bitbuf_read_int_byte_order(bitbuf, &PackedHeader))
 	{
-		return -2;
+		return -1;
 	}
 	
 	memset(notification_header, 0, sizeof(*notification_header));
@@ -360,7 +361,7 @@ int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	for (int i = 0; i < notification_header->HistoryWordCount; ++i)
 	{
 		if (!bitbuf_read_int_byte_order(bitbuf, &notification_header->History[i]))
-			return -3;
+			return -2;
 	}
 
 	return 0;

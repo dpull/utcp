@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <list>
 #include <queue>
 
 namespace utcp
@@ -14,6 +15,11 @@ constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BITS = 7265; // Connection->GetMaxSingle
 constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BYTES = MAX_SINGLE_BUNCH_SIZE_BITS / 8;
 constexpr int32_t MAX_PARTIAL_BUNCH_SIZE_BITS = MAX_SINGLE_BUNCH_SIZE_BYTES * 8;
 static_assert(UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES);
+
+inline size_t bits2bytes(size_t bits_len)
+{
+	return (bits_len + 7) >> 3;
+}
 
 class event_handler
 {
@@ -80,6 +86,7 @@ struct large_bunch : utcp_bunch
 	iterator begin();
 	iterator end();
 	utcp_bunch& sub_bunch(int pos);
+	int num();
 	large_bunch() = delete;
 	large_bunch(const large_bunch&) = delete;
 	large_bunch(large_bunch&&) = delete;
@@ -119,6 +126,19 @@ class conn : public event_handler
   protected:
 	std::priority_queue<packet_view> _packet_order_cache;
 	utcp_connection* _utcp_fd;
+};
+
+class bufconn : public conn
+{
+  public:
+	virtual void update() override;
+	virtual packet_id_range send_bunch(large_bunch* bunch) override;
+
+  protected:
+	void try_send();
+
+	std::list<utcp_bunch> _send_buffer;
+	int32_t _send_buffer_packet_id = packet_id_range::INDEX_NONE;
 };
 
 class listener : public event_handler

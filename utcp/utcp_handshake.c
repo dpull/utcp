@@ -24,7 +24,7 @@ static void GenerateCookie(struct utcp_listener* fd, const char* ClientAddress, 
 {
 	size_t ClientAddressLen = strlen(ClientAddress);
 	uint8_t CookieData[sizeof(double) + sizeof(int32_t) + ADDRSTR_PORT_SIZE];
-	size_t Offset = 0; 
+	size_t Offset = 0;
 
 	memcpy(CookieData + Offset, &Timestamp, sizeof(Timestamp));
 	Offset += sizeof(Timestamp);
@@ -62,7 +62,7 @@ static void SendConnectChallenge(struct utcp_listener* fd, const char* address)
 
 	CapHandshakePacket(&bitbuf);
 
-	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_listener_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendRestartHandshakeRequest
@@ -84,7 +84,7 @@ static void SendRestartHandshakeRequest(struct utcp_listener* fd)
 
 	CapHandshakePacket(&bitbuf);
 
-	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_listener_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendChallengeAck
@@ -112,12 +112,13 @@ static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_conn
 	CapHandshakePacket(&bitbuf);
 
 	if (listener_fd)
-		utcp_outgoing(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+		utcp_listener_outgoing(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 	else
-		utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+		utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
-static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie, bool bIsClient)
+static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHandshake, uint8_t* OutSecretId, double* OutTimestamp, uint8_t* OutCookie, uint8_t* OutOrigCookie,
+								 bool bIsClient)
 {
 	bool bValidPacket = false;
 	size_t BitsLeft = bitbuf->size - bitbuf->num;
@@ -298,7 +299,7 @@ void NotifyHandshakeBegin(struct utcp_connection* fd)
 
 	CapHandshakePacket(&bitbuf);
 
-	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 	fd->LastClientSendTimestamp = utcp_gettime_ms();
 }
 
@@ -331,7 +332,7 @@ void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, doubl
 	}
 
 	CapHandshakePacket(&bitbuf);
-	utcp_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	int16_t* CurSequence = (int16_t*)InCookie;
 
@@ -345,153 +346,144 @@ void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, doubl
 }
 
 // void StatelessConnectHandlerComponent::Incoming(FBitReader& Packet)
-int Incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
+int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	read_magic_header(bitbuf);
 
 	uint8_t bHandshakePacket;
 	if (!bitbuf_read_bit(bitbuf, &bHandshakePacket))
-		return -2;
-
-	if (bHandshakePacket)
 	{
-		uint8_t bRestartHandshake = false;
-		uint8_t SecretId = 0;
-		double Timestamp = 1.0;
-		uint8_t Cookie[COOKIE_BYTE_SIZE];
-		uint8_t OrigCookie[COOKIE_BYTE_SIZE];
+		return -1;
+	}
 
-		bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, fd->mode == Client);
-		if (!bHandshakePacket)
+
+	if (!bHandshakePacket)
+	{
+		return 0;
+	}
+
+	uint8_t bRestartHandshake = false;
+	uint8_t SecretId = 0;
+	double Timestamp = 1.0;
+	uint8_t Cookie[COOKIE_BYTE_SIZE];
+	uint8_t OrigCookie[COOKIE_BYTE_SIZE];
+
+	bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, fd->mode == Client);
+	if (!bHandshakePacket)
+	{
+		return -2;
+	}
+
+	if (fd->mode == Server)
+	{
+		// TODO
+		// Servers should wipe LastChallengeSuccessAddress shortly after the first non-handshake packet is received by the client,
+		// in order to disable challenge ack resending
+		if (fd->LastChallengeSuccessAddress)
 		{
-			return -4;
+			// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
+			// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.
+			SendChallengeAck(NULL, fd, fd->AuthorisedCookie);
 		}
+		return 0;
+	}
 
-		if (fd->mode == Client)
+	if (fd->mode != Client)
+		return 0;
+
+	if (fd->state == UnInitialized || fd->state == InitializedOnLocal)
+	{
+		if (bRestartHandshake)
 		{
-			if (fd->state == UnInitialized || fd->state == InitializedOnLocal)
+			utcp_log(Log, "Ignoring restart handshake request, while already restarted.");
+		}
+		// Receiving challenge, verify the timestamp is > 0.0f
+		else if (Timestamp > 0.0)
+		{
+			fd->LastChallengeTimestamp = utcp_gettime_ms();
+
+			SendChallengeResponse(fd, SecretId, Timestamp, Cookie);
+
+			// Utilize this state as an intermediary, indicating that the challenge response has been sent
+			utcp_set_state(fd, InitializedOnLocal);
+		}
+		// Receiving challenge ack, verify the timestamp is < 0.0f
+		else if (Timestamp < 0.0)
+		{
+			if (!fd->bRestartedHandshake)
 			{
-				if (bRestartHandshake)
-				{
-					// TODO log
-					// "Ignoring restart handshake request, while already restarted."
-				}
-				// Receiving challenge, verify the timestamp is > 0.0f
-				else if (Timestamp > 0.0)
-				{
-					fd->LastChallengeTimestamp = utcp_gettime_ms();
+				// Extract the initial packet sequence from the random Cookie data
+				int16_t* CurSequence = (int16_t*)Cookie;
+				fd->LastServerSequence = *CurSequence & (MAX_PACKETID - 1);
+				fd->LastClientSequence = *(CurSequence + 1) & (MAX_PACKETID - 1);
 
-					SendChallengeResponse(fd, SecretId, Timestamp, Cookie);
-
-					// Utilize this state as an intermediary, indicating that the challenge response has been sent
-					utcp_set_state(fd, InitializedOnLocal);
-				}
-				// Receiving challenge ack, verify the timestamp is < 0.0f
-				else if (Timestamp < 0.0)
-				{
-					if (!fd->bRestartedHandshake)
-					{
-						// Extract the initial packet sequence from the random Cookie data
-						int16_t* CurSequence = (int16_t*)Cookie;
-						fd->LastServerSequence = *CurSequence & (MAX_PACKETID - 1);
-						fd->LastClientSequence = *(CurSequence + 1) & (MAX_PACKETID - 1);
-
-						utcp_sequence_init(fd, fd->LastServerSequence, fd->LastClientSequence);
-						// Save the final authorized cookie
-						memcpy(fd->AuthorisedCookie, Cookie, sizeof(fd->AuthorisedCookie));
-					}
-
-					// Now finish initializing the handler - flushing the queued packet buffer in the process.
-					utcp_set_state(fd, Initialized);
-					utcp_on_connect(fd, fd->bRestartedHandshake);
-					// TODO 连接成功发包 PacketHandler::HandlerComponentInitialized  -->PacketHandler::HandlerInitialized(通知业务层发送
-					// UPendingNetGame::SendInitialJoin) Initialized();
-					fd->bRestartedHandshake = false;
-				}
+				utcp_sequence_init(fd, fd->LastServerSequence, fd->LastClientSequence);
+				// Save the final authorized cookie
+				memcpy(fd->AuthorisedCookie, Cookie, sizeof(fd->AuthorisedCookie));
 			}
-			else if (bRestartHandshake)
+
+			// Now finish initializing the handler - flushing the queued packet buffer in the process.
+			utcp_set_state(fd, Initialized);
+			utcp_on_connect(fd, fd->bRestartedHandshake);
+			fd->bRestartedHandshake = false;
+		}
+	}
+	else if (bRestartHandshake)
+	{
+		uint8_t ZeroCookie[COOKIE_BYTE_SIZE] = {0};
+		bool bValidAuthCookie = memcpy(fd->AuthorisedCookie, ZeroCookie, COOKIE_BYTE_SIZE) != 0;
+
+		// The server has requested us to restart the handshake process - this is because
+		// it has received traffic from us on a different address than before.
+		if (bValidAuthCookie)
+		{
+			bool bPassedDelayCheck = false;
+			bool bPassedDualIPCheck = false;
+			int64_t CurrentTime = utcp_gettime_ms();
+
+			if (!fd->bRestartedHandshake)
 			{
-				uint8_t ZeroCookie[COOKIE_BYTE_SIZE] = {0};
-				bool bValidAuthCookie = memcpy(fd->AuthorisedCookie, ZeroCookie, COOKIE_BYTE_SIZE) != 0;
+				// The server may send multiple restart handshake packets, so have a 10 second delay between accepting them
+				bPassedDelayCheck = (CurrentTime - fd->LastClientSendTimestamp) > 10 * 1000;
 
-				// The server has requested us to restart the handshake process - this is because
-				// it has received traffic from us on a different address than before.
-				if (bValidAuthCookie)
-				{
-					bool bPassedDelayCheck = false;
-					bool bPassedDualIPCheck = false;
-					int64_t CurrentTime = utcp_gettime_ms();
+				// Some clients end up sending packets duplicated over multiple IP's, triggering the restart handshake.
+				// Detect this by checking if any restart handshake requests have been received in roughly the last second
+				// (Dual IP situations will make the server send them constantly) - and override the checks as a failsafe,
+				// if no NetConnection packets have been received in the last second.
+				int64_t LastRestartPacketTimeDiff = CurrentTime - fd->LastRestartPacketTimestamp;
+				int64_t LastNetConnPacketTimeDiff = CurrentTime - fd->LastReceiveRealtime;
 
-					if (!fd->bRestartedHandshake)
-					{
-						// The server may send multiple restart handshake packets, so have a 10 second delay between accepting them
-						bPassedDelayCheck = (CurrentTime - fd->LastClientSendTimestamp) > 10 * 1000;
+				bPassedDualIPCheck = fd->LastRestartPacketTimestamp == 0 || LastRestartPacketTimeDiff > 1100 || LastNetConnPacketTimeDiff > 1000;
+			}
 
-						// Some clients end up sending packets duplicated over multiple IP's, triggering the restart handshake.
-						// Detect this by checking if any restart handshake requests have been received in roughly the last second
-						// (Dual IP situations will make the server send them constantly) - and override the checks as a failsafe,
-						// if no NetConnection packets have been received in the last second.
-						int64_t LastRestartPacketTimeDiff = CurrentTime - fd->LastRestartPacketTimestamp;
-						int64_t LastNetConnPacketTimeDiff = CurrentTime - fd->LastReceiveRealtime;
+			fd->LastRestartPacketTimestamp = CurrentTime;
+			if (!fd->bRestartedHandshake && bPassedDelayCheck && bPassedDualIPCheck)
+			{
+				// UE_LOG(LogHandshake, Log, TEXT("Beginning restart handshake process."));
 
-						bPassedDualIPCheck = fd->LastRestartPacketTimestamp == 0 || LastRestartPacketTimeDiff > 1100 || LastNetConnPacketTimeDiff > 1000;
-					}
-
-					fd->LastRestartPacketTimestamp = CurrentTime;
-					if (!fd->bRestartedHandshake && bPassedDelayCheck && bPassedDualIPCheck)
-					{
-						// UE_LOG(LogHandshake, Log, TEXT("Beginning restart handshake process."));
-
-						fd->bRestartedHandshake = true;
-						utcp_set_state(fd, UnInitialized);
-						NotifyHandshakeBegin(fd);
-					}
-					else
-					{
-						if (fd->bRestartedHandshake)
-						{
-							// UE_LOG(LogHandshake, Log, TEXT("Ignoring restart handshake request, while already restarted (this is normal)."));
-						}
-					}
-				}
-				else
-				{
-					// UE_LOG(LogHandshake, Log, TEXT("Server sent restart handshake request, when we don't have an authorised cookie."));
-					return -5;
-				}
+				fd->bRestartedHandshake = true;
+				utcp_set_state(fd, UnInitialized);
+				NotifyHandshakeBegin(fd);
 			}
 			else
 			{
-				// Ignore, could be a dupe/out-of-order challenge packet
+				if (fd->bRestartedHandshake)
+				{
+					utcp_log(Log, "Ignoring restart handshake request, while already restarted (this is normal).");
+				}
 			}
 		}
-		else if (fd->mode == Server)
+		else
 		{
-			if (fd->LastChallengeSuccessAddress)
-			{
-				// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
-				// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.
-				SendChallengeAck(NULL, fd, fd->AuthorisedCookie);
-			}
+			utcp_log(Log, "Server sent restart handshake request, when we don't have an authorised cookie.");
+			return -3;
 		}
 	}
-	// Servers should wipe LastChallengeSuccessAddress shortly after the first non-handshake packet is received by the client,
-	// in order to disable challenge ack resending
-	/*
-	* TODO 根据语意, 这段代码永远不会执行, 是我没理解对吗?
-	else if (fd->LastInitTimestamp != 0.0 && LastChallengeSuccessAddress.IsValid() && Handler->Mode == Handler::Mode::Server) {
-		// Restart handshakes require extra time before disabling challenge ack resends, as NetConnection packets will already be in flight
-
-
-		const double RestartHandshakeAckResendWindow = 10.0;
-		double CurTime = Driver != nullptr ? Driver->GetElapsedTime() : 0.0;
-
-		if (LastInitTimestamp - CurTime >= RestartHandshakeAckResendWindow) {
-			LastChallengeSuccessAddress.Reset();
-			LastInitTimestamp = 0.0;
-		}
+	else
+	{
+		// Ignore, could be a dupe/out-of-order challenge packet
 	}
-	*/
+
 	return 0;
 }
 
@@ -508,4 +500,9 @@ void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, in
 	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 
 	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
+}
+
+void utcp_set_state(struct utcp_connection* fd, enum utcp_state state)
+{
+	fd->state = state;
 }

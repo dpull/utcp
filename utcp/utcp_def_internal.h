@@ -24,7 +24,7 @@ enum
 
 #define SECRET_UPDATE_TIME 15.f
 #define SECRET_UPDATE_TIME_VARIANCE 5.f
-#define InitialConnectTimeout 120 * 1000
+#define UTCP_CONNECT_TIMEOUT (120 * 1000)
 
 // The maximum allowed lifetime (in seconds) of any one handshake cookie
 #define MAX_COOKIE_LIFETIME ((SECRET_UPDATE_TIME + SECRET_UPDATE_TIME_VARIANCE) * (float)SECRET_COUNT)
@@ -82,12 +82,13 @@ struct utcp_connection
 {
 	void* userdata;
 
+	uint8_t bClose : 1;
+	uint8_t CloseReason : 7;
+
 	// 握手相关
 	uint8_t mode : 2;
 	uint8_t state : 2;
 
-	uint8_t CloseReason : 4;
-	uint8_t bCloseReason : 1;
 	uint8_t LastChallengeSuccessAddress : 1;
 
 	/** Whether or not component handshaking has begun */
@@ -152,19 +153,27 @@ struct utcp_connection
 	// size_t HeaderMarkForPacketInfo;
 };
 
-enum ENetCloseResult
+enum UTcpNetCloseResult
 {
-	/** NetConnection Cleanup was triggered */
-	Cleanup,
+	/** Control channel closing */
+	ControlChannelClose,
 
 	/** Socket send failure */
 	SocketSendFailure,
 
-	/** Attempted to send data before handshake is complete */
-	PrematureSend,
-
 	/** A connection to the net driver has been lost */
 	ConnectionLost,
+
+	////////////////////////////////////////////////////////////////////////////////////
+
+	/** NetConnection Cleanup was triggered */
+	Cleanup,
+
+	/** PacketHandler Error processing incoming packet */
+	PacketHandlerIncomingError,
+
+	/** Attempted to send data before handshake is complete */
+	PrematureSend,
 
 	/** A connection to the net driver has timed out */
 	ConnectionTimeout,
@@ -187,11 +196,8 @@ enum ENetCloseResult
 	/** Bunch channel index exceeds maximum channel limit */
 	BunchBadChannelIndex,
 
-	/** Bunch header serialization overflowed */
-	BunchHeaderOverflow,
-
-	/** Bunch data serialization overflowed */
-	BunchDataOverflow,
+	/** Bunch header or data serialization overflowed */
+	BunchOverflow,
 
 	/** Reliable buffer overflowed when attempting to send */
 	ReliableBufferOverflow,

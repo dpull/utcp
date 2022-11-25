@@ -47,10 +47,16 @@ static struct utcp_channel* utcp_get_channel(struct utcp_connection* fd, struct 
 			assert(false);
 			utcp_log(Warning, "utcp_get_channel failed");
 		}
+
+		utcp_log(Log, "conn:%p create channel:%hu", fd, utcp_bunch->ChIndex);
 	}
 	if (utcp_bunch->bClose && utcp_channel)
 	{
 		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
+	}
+	if (utcp_bunch->bClose && utcp_bunch->ChIndex == 0)
+	{
+		utcp_mark_close(fd, ControlChannelClose);
 	}
 	return utcp_channel;
 }
@@ -62,6 +68,8 @@ static void utcp_close_channel(struct utcp_connection* fd, int ChIndex)
 	free_utcp_channel(fd->Channels[ChIndex]);
 	fd->Channels[ChIndex] = NULL;
 	open_channel_remove(&fd->open_channels, ChIndex);
+
+	utcp_log(Log, "conn:%p close channel:%hu", fd, ChIndex);
 }
 
 void utcp_closeall_channel(struct utcp_connection* fd)
@@ -180,6 +188,15 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 		struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
 		if (!utcp_bunch_read(utcp_bunch, bitbuf))
 		{
+			utcp_log(Warning, "Bunch header overflowed");
+			utcp_mark_close(fd, BunchOverflow);
+			break;
+		}
+
+		if (utcp_bunch->ChIndex >= DEFAULT_MAX_CHANNEL_SIZE)
+		{
+			utcp_log(Warning, "Bunch channel index exceeds channel limit");
+			utcp_mark_close(fd, BunchBadChannelIndex);
 			break;
 		}
 
@@ -240,37 +257,52 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 }
 
 // UNetConnection::ReceivedPacket
-int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
+bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
 	if (ret)
 	{
-		return ret;
+		utcp_log(Warning, "Failed to read PacketHeader.%d", ret);
+		utcp_mark_close(fd, ReadHeaderFail);
+		return false;
 	}
 	uint8_t bHasPacketInfoPayload = true;
 	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload))
-		return -4;
+	{
+		utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 1);
+		utcp_mark_close(fd, ReadHeaderExtraFail);
+		return false;
+	}
 
 	if (bHasPacketInfoPayload)
 	{
 		uint32_t PacketJitterClockTimeMS = 0;
 		if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
 		{
-			return -5;
+			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 2);
+			utcp_mark_close(fd, ReadHeaderExtraFail);
+			return false;
 		}
 
 		// UNetConnection::ReadPacketInfo
 		uint8_t bHasServerFrameTime;
 		if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
 		{
-			return -6;
+			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 3);
+			utcp_mark_close(fd, ReadHeaderExtraFail);
+			return false;
 		}
 
 		if (bHasServerFrameTime)
 		{
 			uint8_t FrameTimeByte = 0;
-			bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1);
+			if (!bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1))
+			{
+				utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 4);
+				utcp_mark_close(fd, ReadHeaderExtraFail);
+				return false;
+			}
 		}
 	}
 
@@ -283,7 +315,7 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		// So rather than add individual protection for unreliable RPC's as well, just kill it at the source,
 		// which protects everything in one fell swoop
 		utcp_log(Verbose, "'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", notification_header.Seq, fd->packet_notify.InSeq);
-		return -8;
+		return true;
 	}
 
 	const bool bPacketOrderCacheActive = false;
@@ -292,9 +324,7 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		// 按照我们的设计, PacketOrderCache 以及 FlushPacketOrderCache 功能由外部实现
 		const int32_t MissingPacketCount = PacketSequenceDelta - 1;
 		if (MissingPacketCount > 0)
-		{
-			return 0;
-		}
+			return true;
 	}
 
 	fd->InPacketId += PacketSequenceDelta;
@@ -321,7 +351,7 @@ int ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	{
 		packet_notify_AckSeq(&fd->packet_notify, fd->InPacketId, true);
 	}
-	return 0;
+	return true;
 }
 
 int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
@@ -474,6 +504,11 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 	bunch->ChSequence = 0;
 	if (bunch->bReliable)
 	{
+		if (utcp_channel->NumOutRec + 1 >= UTCP_RELIABLE_BUFFER)
+		{
+			utcp_log(Warning, "Outgoing reliable buffer overflow");
+			utcp_mark_close(fd, ReliableBufferOverflow);
+		}
 		bunch->ChSequence = ++utcp_channel->OutReliable;
 	}
 
@@ -517,6 +552,26 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 	}
 
 	return PacketId;
+}
+
+void utcp_delay_close_channel(struct utcp_connection* fd)
+{
+	for (int i = fd->open_channels.num; i > 0; --i)
+	{
+		uint16_t ChIndex = fd->open_channels.channels[i - 1];
+		if (fd->Channels[ChIndex] && !fd->Channels[ChIndex]->bClose)
+			continue;
+
+		if (fd->Channels[ChIndex])
+		{
+			utcp_close_channel(fd, ChIndex);
+		}
+		else
+		{
+			open_channel_remove(&fd->open_channels, ChIndex);
+			utcp_log(Warning, "fd->Channels is null:%hu", ChIndex);
+		}
+	}
 }
 
 // UNetConnection::WriteBitsToSendBuffer

@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "*.pysql": "python",
-        "utcp_def_internal.h": "c",
-        "assert.h": "c",
-        "utcp_def.h": "c"
-    }
-}
