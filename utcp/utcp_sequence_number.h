@@ -1,6 +1,7 @@
 ﻿// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 #ifndef SequenceNumberBits

@@ -58,7 +58,7 @@ TEST_F(packet, accept_hello)
 	int32_t packet_id = utcp_peep_packet_id(fd.get(), packet_hello, sizeof(packet_hello));
 	ASSERT_EQ(packet_id, 12054);
 
-	ASSERT_EQ(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)), 0);
+	ASSERT_TRUE(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)));
 
 	ASSERT_EQ(last_recv.size(), 1);
 	ASSERT_EQ(last_recv[0].bOpen, 1);
@@ -71,7 +71,7 @@ TEST_F(packet, accept_hello)
 	ASSERT_EQ(hello->RemoteNetworkVersion, 2358803763);
 	ASSERT_EQ(hello->EncryptionTokenStrLen, 0);
 
-	ASSERT_EQ(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)), -8);
+	ASSERT_FALSE(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)));
 }
 /*
 TEST_F(packet, write_hello)
@@ -142,7 +142,7 @@ TEST_F(packet, accept_hello_login)
 	bunch.ChIndex = 0;
 	bunch.bReliable = 1;
 
-	ASSERT_EQ(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)), 0);
+	ASSERT_TRUE(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)));
 	ASSERT_EQ(last_recv.size(), 1);
 
 	bunch.DataBitsLen = sizeof(packet_challenge) * 8;
@@ -152,7 +152,7 @@ TEST_F(packet, accept_hello_login)
 
 	utcp_send_flush(fd.get());
 
-	ASSERT_EQ(utcp_incoming(fd.get(), packet_login, sizeof(packet_login)), 0);
+	ASSERT_TRUE(utcp_incoming(fd.get(), packet_login, sizeof(packet_login)));
 	ASSERT_EQ(last_recv.size(), 2);
 
 	bunch.DataBitsLen = sizeof(packet_welcome) * 8;
