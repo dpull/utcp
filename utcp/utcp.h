@@ -9,9 +9,6 @@
 extern "C" {
 #endif
 
-struct utcp_listener;
-struct utcp_connection;
-
 // global API
 struct utcp_config* utcp_get_config();
 void utcp_add_elapsed_time(int64_t delta_time_ns);

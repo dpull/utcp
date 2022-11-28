@@ -1,4 +1,4 @@
-#include "utcp.hpp"
+﻿#include "utcp.hpp"
 extern "C" {
 #include "utcp/bit_buffer.h"
 #include "utcp/utcp_def_internal.h"
@@ -239,14 +239,14 @@ void conn::send_flush()
 	utcp_send_flush(_utcp_fd);
 }
 
-bool conn::same_auth_cookie(const uint8_t* auth_cookie)
-{
-	return memcmp(_utcp_fd->AuthorisedCookie, auth_cookie, sizeof(_utcp_fd->AuthorisedCookie)) == 0;
-}
-
 utcp_connection* conn::get_fd()
 {
 	return _utcp_fd;
+}
+
+bool conn::is_closed()
+{
+	return _utcp_fd->bClose;
 }
 
 void conn::flush_packet_order_cache(bool forced_flush)
@@ -335,12 +335,6 @@ void listener::update_secret()
 	utcp_listener_update_secret(_utcp_fd, nullptr);
 }
 
-uint8_t* listener::get_auth_cookie()
-{
-	if (_utcp_fd->LastChallengeSuccessAddress[0])
-		return _utcp_fd->AuthorisedCookie;
-	return nullptr;
-}
 
 void listener::incoming(const char* address, uint8_t* data, int count)
 {
@@ -350,6 +344,12 @@ void listener::incoming(const char* address, uint8_t* data, int count)
 void listener::accept(conn* c, bool reconnect)
 {
 	utcp_listener_accept(_utcp_fd, c->get_fd(), reconnect);
+}
+
+// StatelessConnectHandlerComponent::DoesRestartedHandshakeMatch
+bool listener::does_restarted_handshake_match(conn* c)
+{
+	return memcmp(_utcp_fd->AuthorisedCookie, c->get_fd()->AuthorisedCookie, sizeof(_utcp_fd->AuthorisedCookie)) == 0;
 }
 
 utcp_listener* listener::get_fd()

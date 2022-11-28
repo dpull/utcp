@@ -1,4 +1,4 @@
-#include "utcp_packet_notify.h"
+﻿#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
 #include "utcp_channel.h"
 #include "utcp_def_internal.h"
@@ -31,8 +31,8 @@ static uint32_t PackedHeader_Pack(uint16_t Seq, uint16_t AckedSeq, size_t Histor
 {
 	uint32_t Packed = 0u;
 
-	Packed |= Seq << SeqShift;
-	Packed |= AckedSeq << AckSeqShift;
+	Packed |= (uint32_t)Seq << SeqShift;
+	Packed |= (uint32_t)AckedSeq << AckSeqShift;
 	Packed |= HistoryWordCount & HistoryWordCountMask;
 
 	return Packed;
@@ -49,7 +49,7 @@ static void PackedHeader_UnPack(uint32_t Packed, uint16_t* Seq, uint16_t* AckedS
 // FNetPacketNotify::UpdateInAckSeqAck
 static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t AckCount, uint16_t AckedSeq)
 {
-	assert(AckedSeq > 0);
+	assert(AckCount > 0);
 	if (AckCount <= ring_buffer_num_items(&packet_notify->AckRecord))
 	{
 		union sent_ack_data AckData;

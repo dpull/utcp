@@ -10,7 +10,7 @@ enum class log_level
 	Log,
 	Verbose,
 };
-void log(log_level level, char* fmt, ...);
+void log(log_level level, const char* fmt, ...);
 
 struct sample_config
 {

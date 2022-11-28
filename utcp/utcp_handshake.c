@@ -379,7 +379,7 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		// TODO
 		// Servers should wipe LastChallengeSuccessAddress shortly after the first non-handshake packet is received by the client,
 		// in order to disable challenge ack resending
-		if (fd->LastChallengeSuccessAddress)
+		if (fd->bLastChallengeSuccessAddress)
 		{
 			// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
 			// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.

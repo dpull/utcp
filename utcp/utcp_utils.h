@@ -42,9 +42,17 @@ static inline void* utcp_realloc(void* ptr, size_t size)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (!utcp_config->on_realloc)
-		return realloc(ptr, size);
+	{
+		if (size > 0)
+			return realloc(ptr, size);
+		// if new_size is zero, the behavior is undefined. (since C23)
+		free(ptr);
+		return NULL;
+	}
 	else
+	{
 		return utcp_config->on_realloc(ptr, size);
+	}
 }
 
 static inline void utcp_dump(const char* type, int ext, const void* data, int len)

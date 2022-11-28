@@ -116,9 +116,9 @@ class conn : public event_handler
 	virtual void flush_incoming_cache();
 	virtual packet_id_range send_bunch(large_bunch* bunch);
 	virtual void send_flush();
-	virtual bool same_auth_cookie(const uint8_t* auth_cookie);
 
 	utcp_connection* get_fd();
+	bool is_closed();
 
   protected:
 	void flush_packet_order_cache(bool forced_flush);
@@ -148,11 +148,11 @@ class listener : public event_handler
 	virtual ~listener();
 
 	void update_secret();
-	uint8_t* get_auth_cookie();
 
 	virtual void incoming(const char* address, uint8_t* data, int count);
 	virtual void accept(conn* c, bool reconnect);
-
+	virtual bool does_restarted_handshake_match(conn* c);
+	
 	utcp_listener* get_fd();
 
   protected:

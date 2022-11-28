@@ -38,7 +38,7 @@ static void vlog(int level, const char* fmt, va_list marker)
 	fprintf(stdout, "\n");
 }
 
-void log(log_level level, char* fmt, ...)
+void log(log_level level, const char* fmt, ...)
 {
 	va_list marker;
 	va_start(marker, fmt);
@@ -100,7 +100,7 @@ void echo()
 	listener->listen("127.0.0.1", 8241);
 	client->async_connnect("127.0.0.1", 8241);
 
-	while (true)
+	while (loop.frame < 5000)
 	{
 		loop.tick();
 

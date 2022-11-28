@@ -49,7 +49,7 @@ template <typename T>
 class udp_utcp_listener_impl : public udp_utcp_listener
 {
   protected:
-	virtual utcp::conn* new_conn()
+	virtual utcp::conn* new_conn() override
 	{
 		return new T;
 	}

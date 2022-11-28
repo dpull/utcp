@@ -27,9 +27,20 @@ void echo_connection::send(int num)
 	bunch.bOpen = 1;
 	bunch.bReliable = 1;
 	bunch.ExtDataBitsLen = 0;
+	bunch.bPartial = 1;
+	bunch.bPartialInitial = 1;
 
 	auto ret = send_bunch(&bunch);
 	log(log_level::Log, "[snd]\t[%p]\t%d\t%d", this, ret.first, num);
+	send_flush();
+	
+	bunch.bPartialInitial = 0;
+	ret = send_bunch(&bunch);
+	send_flush();
+	
+	bunch.bPartialFinal = 1;
+	ret = send_bunch(&bunch);
+	send_flush();
 }
 
 void echo_connection::update()
@@ -64,7 +75,7 @@ void echo_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int coun
 {
 	int num;
 
-	assert(count == 1);
+	assert(count == 3);
 	assert(bunches[0]->DataBitsLen == sizeof(num) * 8);
 	memcpy(&num, bunches[0]->Data, sizeof(num));
 	send(num + 1);

@@ -53,6 +53,7 @@ static struct utcp_channel* utcp_get_channel(struct utcp_connection* fd, struct 
 	if (utcp_bunch->bClose && utcp_channel)
 	{
 		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
+		fd->bHasChannelClose = true;
 	}
 	if (utcp_bunch->bClose && utcp_bunch->ChIndex == 0)
 	{
@@ -219,14 +220,14 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 		// Ignore if reliable packet has already been processed.
 		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= utcp_channel->InReliable)
 		{
-			utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
+			// utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
 			break;
 		}
 
 		if (utcp_bunch->bReliable && utcp_bunch->ChSequence != utcp_channel->InReliable + 1)
 		{
 			// If this bunch has a dependency on a previous unreceived bunch, buffer it.
-			assert(!utcp_bunch->bOpen);
+			// assert(!utcp_bunch->bOpen);
 
 			// Verify that UConnection::ReceivedPacket has passed us a valid bunch.
 			assert(utcp_bunch->ChSequence > utcp_channel->InReliable);
@@ -504,11 +505,13 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 	bunch->ChSequence = 0;
 	if (bunch->bReliable)
 	{
+		/*
 		if (utcp_channel->NumOutRec + 1 >= UTCP_RELIABLE_BUFFER)
 		{
 			utcp_log(Warning, "Outgoing reliable buffer overflow");
 			utcp_mark_close(fd, ReliableBufferOverflow);
 		}
+		*/
 		bunch->ChSequence = ++utcp_channel->OutReliable;
 	}
 
@@ -556,6 +559,10 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 
 void utcp_delay_close_channel(struct utcp_connection* fd)
 {
+	if (!fd->bHasChannelClose)
+		return;
+	fd->bHasChannelClose = false;
+	
 	for (int i = fd->open_channels.num; i > 0; --i)
 	{
 		uint16_t ChIndex = fd->open_channels.channels[i - 1];

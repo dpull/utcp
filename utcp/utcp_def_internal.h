@@ -89,8 +89,10 @@ struct utcp_connection
 	uint8_t mode : 2;
 	uint8_t state : 2;
 
-	uint8_t LastChallengeSuccessAddress : 1;
+	uint8_t bHasChannelClose : 1;
+	uint8_t bLastChallengeSuccessAddress : 1;
 
+	
 	/** Whether or not component handshaking has begun */
 	uint8_t bBeganHandshaking : 1;
 

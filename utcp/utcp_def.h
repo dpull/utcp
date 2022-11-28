@@ -11,6 +11,10 @@
 extern "C" {
 #endif
 
+struct utcp_listener;
+struct utcp_connection;
+struct utcp_bunch;
+
 struct utcp_config
 {
 	void (*on_accept)(struct utcp_listener* fd, void* userdata, bool reconnect);

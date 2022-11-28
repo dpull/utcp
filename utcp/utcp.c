@@ -126,7 +126,7 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 
 void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
-	conn->LastChallengeSuccessAddress = 1;
+	conn->bLastChallengeSuccessAddress = 1;
 
 	if (!reconnect)
 	{

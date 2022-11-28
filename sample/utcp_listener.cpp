@@ -57,13 +57,9 @@ void udp_utcp_listener::on_accept(bool reconnect)
 	}
 	else
 	{
-		auto auth_cookie = get_auth_cookie();
-		if (!auth_cookie)
-			return;
-
 		for (auto it = clients.begin(); it != clients.end(); ++it)
 		{
-			if (it->second->same_auth_cookie(auth_cookie))
+			if (does_restarted_handshake_match(it->second))
 			{
 				conn = it->second;
 				clients.erase(it);
