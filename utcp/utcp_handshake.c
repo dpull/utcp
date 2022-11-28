@@ -36,6 +36,15 @@ static void GenerateCookie(struct utcp_listener* fd, const char* ClientAddress, 
 	sha1_hmac_buffer(fd->HandshakeSecret[!!SecretId], SECRET_BYTE_SIZE, CookieData, Offset, OutCookie);
 }
 
+// StatelessConnectHandlerComponent::CapHandshakePacket
+void CapHandshakePacket(struct bitbuf* bitbuf)
+{
+	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(0);
+	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
+	// Add a termination bit, the same as the UNetConnection code does
+	bitbuf_write_end(bitbuf);
+}
+
 // StatelessConnectHandlerComponent::SendConnectChallenge
 static void SendConnectChallenge(struct utcp_listener* fd, const char* address)
 {
@@ -156,26 +165,6 @@ static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHand
 	}
 
 	return bValidPacket;
-}
-
-// StatelessConnectHandlerComponent::CapHandshakePacket
-void CapHandshakePacket(struct bitbuf* bitbuf)
-{
-	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(0);
-	assert(NumBits == HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_HANDSHAKE_PACKET_SIZE_BITS || NumBits == RESTART_RESPONSE_SIZE_BITS);
-	// Add a termination bit, the same as the UNetConnection code does
-	bitbuf_write_end(bitbuf);
-}
-
-// StatelessConnectHandlerComponent::Outgoing
-int Outgoing(struct bitbuf* bitbuf)
-{
-	assert(bitbuf->num == 0);
-	write_magic_header(bitbuf);
-
-	uint8_t bHandshakePacket = 0;
-	bitbuf_write_bit(bitbuf, bHandshakePacket);
-	return 0;
 }
 
 // StatelessConnectHandlerComponent::IncomingConnectionless
@@ -485,21 +474,6 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	}
 
 	return 0;
-}
-
-// UNetConnection::InitSequence
-void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
-{
-	fd->InPacketId = IncomingSequence - 1;
-	fd->OutPacketId = OutgoingSequence;
-	fd->OutAckPacketId = OutgoingSequence - 1;
-	fd->LastNotifiedPacketId = fd->OutAckPacketId;
-
-	// Initialize the reliable packet sequence (more useful/effective at preventing attacks)
-	fd->InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
-	fd->InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
-
-	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
 }
 
 void utcp_set_state(struct utcp_connection* fd, enum utcp_state state)

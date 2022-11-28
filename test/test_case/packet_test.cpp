@@ -1,7 +1,7 @@
 ﻿
 #include "test_utils.h"
 extern "C" {
-#include "utcp/utcp_handshake.h"
+#include "utcp/utcp_packet.h"
 }
 #include "gtest/gtest.h"
 #include <memory>

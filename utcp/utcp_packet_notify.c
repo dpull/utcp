@@ -1,12 +1,10 @@
 ﻿#include "utcp_packet_notify.h"
 #include "bit_buffer.h"
-#include "utcp_channel.h"
 #include "utcp_def_internal.h"
 #include "utcp_packet.h"
 #include "utcp_sequence_number.h"
 #include "utcp_utils.h"
 #include <assert.h>
-#include <stdlib.h>
 #include <string.h>
 
 static inline size_t MIN(size_t a, size_t b)
@@ -73,52 +71,6 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	return AckedSeq - MaxSequenceHistoryLength;
 }
 
-//  UNetConnection::ReceivedAck
-static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
-{
-	// Advance OutAckPacketId
-	fd->OutAckPacketId = AckPacketId;
-
-	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int j = 0; j < fd->open_channels.num; ++j)
-	{
-		uint16_t ChIndex = fd->open_channels.channels[j];
-		assert(fd->Channels[ChIndex]);
-
-		struct utcp_channel* utcp_channel = fd->Channels[ChIndex];
-		int count = remove_ougoing_data(utcp_channel, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
-		for (int i = 0; i < count; ++i)
-		{
-			free_utcp_bunch_node(utcp_bunch_node[i]);
-		}
-	}
-	utcp_delivery_status(fd, AckPacketId, true);
-}
-
-// UNetConnection::ReceivedNak
-static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
-{
-	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
-	for (int j = 0; j < fd->open_channels.num; ++j)
-	{
-		uint16_t ChIndex = fd->open_channels.channels[j];
-		assert(fd->Channels[ChIndex]);
-
-		// UChannel::ReceivedNak
-		struct utcp_channel* utcp_channel = fd->Channels[ChIndex];
-		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
-		for (int i = 0; i < count; ++i)
-		{
-			int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
-			utcp_bunch_node[i]->packet_id = packet_id;
-			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
-
-			utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
-		}
-	}
-	utcp_delivery_status(fd, NakPacketId, false);
-}
-
 int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
 	if (seq_num_greater_than(notification_header->Seq, packet_notify->InSeq) && seq_num_greater_equal(notification_header->AckedSeq, packet_notify->OutAckSeq) &&
@@ -176,33 +128,8 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 	}
 }
 
-// auto HandlePacketNotification = [&Header, &ChannelsToClose, this](FNetPacketNotify::SequenceNumberT AckedSequence, bool bDelivered)
-static void HandlePacketNotification(struct utcp_connection* fd, uint16_t AckedSequence, bool bDelivered)
-{
-	// Increase LastNotifiedPacketId, this is a full packet Id
-	++fd->LastNotifiedPacketId;
-
-	// Sanity check
-	if (seq_num_init(fd->LastNotifiedPacketId) != AckedSequence)
-	{
-		utcp_log(Warning, "[HandlePacketNotification]LastNotifiedPacketId != AckedSequence");
-		// Close(ENetCloseResult::AckSequenceMismatch);
-
-		return;
-	}
-
-	if (bDelivered)
-	{
-		ReceivedAck(fd, fd->LastNotifiedPacketId);
-	}
-	else
-	{
-		ReceivedNak(fd, fd->LastNotifiedPacketId);
-	};
-}
-
 // FNetPacketNotify::Update
-int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
+int32_t packet_notify_Update(HandlePacketNotificationFn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
 	const int32_t InSeqDelta = GetSequenceDelta(packet_notify, notification_header);
 	if (InSeqDelta > 0)
@@ -232,7 +159,7 @@ int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* p
 			while (AckCount > MaxSequenceHistoryLength)
 			{
 				--AckCount;
-				HandlePacketNotification(fd, CurrentAck, false);
+				handle(fd, CurrentAck, false);
 				CurrentAck = seq_num_inc(CurrentAck, 1);
 			}
 
@@ -255,7 +182,7 @@ int32_t packet_notify_Update(struct utcp_connection* fd, struct packet_notify* p
 
 				// UE_LOG_PACKET_NOTIFY(TEXT("Notification::ProcessReceivedAcks Seq: %u - IsAck: %u HistoryIndex: %u"), CurrentAck.Get(),
 				// NotificationData.History.IsDelivered(AckCount) ? 1u : 0u, AckCount);
-				HandlePacketNotification(fd, CurrentAck, IsDelivered);
+				handle(fd, CurrentAck, IsDelivered);
 				CurrentAck = seq_num_inc(CurrentAck, 1);
 			}
 			packet_notify->OutAckSeq = notification_header->AckedSeq;
@@ -301,48 +228,8 @@ static size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify
 	}
 }
 
-// FNetPacketNotify::WriteHeader
-bool packet_notify_WriteHeader(struct packet_notify* packet_notify, struct bitbuf* bitbuf, bool bRefresh)
-{
-	// we always write at least 1 word
-	size_t CurrentHistoryWordCount =
-		ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u, SequenceHistoryWordCount);
-
-	// We can only do a refresh if we do not need more space for the history
-	if (bRefresh && (CurrentHistoryWordCount > packet_notify->WrittenHistoryWordCount))
-	{
-		return false;
-	}
-
-	// How many words of ack data should we write? If this is a refresh we must write the same size as the original header
-	packet_notify->WrittenHistoryWordCount = bRefresh ? packet_notify->WrittenHistoryWordCount : CurrentHistoryWordCount;
-	// This is the last InAck we have acknowledged at this time
-	packet_notify->WrittenInAckSeq = packet_notify->InAckSeq;
-
-	// Pack data into a uint
-	uint32_t PackedHeader = PackedHeader_Pack(packet_notify->OutSeq, packet_notify->InAckSeq, packet_notify->WrittenHistoryWordCount - 1);
-
-	// Write packed header
-	bitbuf_write_int_byte_order(bitbuf, PackedHeader);
-
-	// Write ack history
-	// TSequenceHistory<HistorySize>::Write
-	{
-		size_t NumWords = MIN(packet_notify->WrittenHistoryWordCount, SequenceHistoryWordCount);
-		for (size_t i = 0; i < NumWords; ++i)
-		{
-			bitbuf_write_int_byte_order(bitbuf, packet_notify->InSeqHistory[i]);
-		}
-	}
-
-	// TODO log UE_LOG_PACKET_NOTIFY(TEXT("FNetPacketNotify::WriteHeader - Seq %u, AckedSeq %u bReFresh %u HistorySizeInWords %u"), Seq, AckedSeq, bRefresh ? 1u
-	// : 0u, WrittenHistoryWordCount);
-
-	return true;
-}
-
 // FNetPacketNotify::ReadHeader
-int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, struct notification_header* notification_header)
+int packet_notify_ReadHeader(struct bitbuf* bitbuf, struct notification_header* notification_header)
 {
 	// Read packed header
 	uint32_t PackedHeader = 0;
@@ -350,7 +237,7 @@ int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	{
 		return -1;
 	}
-	
+
 	memset(notification_header, 0, sizeof(*notification_header));
 
 	// unpack
@@ -365,4 +252,133 @@ int packet_notify_ReadHeader(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	}
 
 	return 0;
+}
+
+int packet_header_read(struct packet_header* packet_header, struct bitbuf* bitbuf)
+{
+	int ret = packet_notify_ReadHeader(bitbuf, &packet_header->notification_header);
+	if (ret != 0)
+	{
+		utcp_log(Warning, "Failed to read PacketHeader.%d", ret);
+		return ReadHeaderFail;
+	}
+
+	if (!bitbuf_read_bit(bitbuf, &packet_header->bHasPacketInfoPayload))
+	{
+		utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 1);
+		return ReadHeaderExtraFail;
+	}
+
+	if (packet_header->bHasPacketInfoPayload)
+	{
+		if (!bitbuf_read_int(bitbuf, &packet_header->PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
+		{
+			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 2);
+			return ReadHeaderExtraFail;
+		}
+
+		// UNetConnection::ReadPacketInfo
+		if (!bitbuf_read_bit(bitbuf, &packet_header->bHasServerFrameTime))
+		{
+			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 3);
+			return ReadHeaderExtraFail;
+		}
+
+		if (packet_header->bHasServerFrameTime)
+		{
+			if (!bitbuf_read_bytes(bitbuf, &packet_header->FrameTimeByte, 1))
+			{
+				utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 3);
+				return ReadHeaderExtraFail;
+			}
+		}
+	}
+	return 0;
+}
+
+// FNetPacketNotify::WriteHeader
+bool packet_notify_fill_notification_header(struct packet_notify* packet_notify, struct notification_header* notification_header, bool bRefresh)
+{
+	// we always write at least 1 word
+	size_t CurrentHistoryWordCount =
+		ClAMP((packet_notify_GetCurrentSequenceHistoryLength(packet_notify) + SequenceHistoryBitsPerWord - 1u) / SequenceHistoryBitsPerWord, 1u, SequenceHistoryWordCount);
+
+	// We can only do a refresh if we do not need more space for the history
+	if (bRefresh && (CurrentHistoryWordCount > packet_notify->WrittenHistoryWordCount))
+		return false;
+
+	// How many words of ack data should we write? If this is a refresh we must write the same size as the original header
+	packet_notify->WrittenHistoryWordCount = bRefresh ? packet_notify->WrittenHistoryWordCount : CurrentHistoryWordCount;
+
+	// This is the last InAck we have acknowledged at this time
+	packet_notify->WrittenInAckSeq = packet_notify->InAckSeq;
+
+	notification_header->Seq = packet_notify->OutSeq;
+	notification_header->AckedSeq = packet_notify->WrittenInAckSeq;
+	notification_header->HistoryWordCount = packet_notify->WrittenHistoryWordCount;
+
+	// Write ack history
+	// TSequenceHistory<HistorySize>::Write
+	{
+		size_t NumWords = MIN(packet_notify->WrittenHistoryWordCount, SequenceHistoryWordCount);
+		for (size_t i = 0; i < NumWords; ++i)
+		{
+			notification_header->History[i] = packet_notify->InSeqHistory[i];
+		}
+	}
+	return true;
+}
+
+static int packet_notify_WriteHeader(struct bitbuf* bitbuf, struct notification_header* notification_header)
+{
+	// Pack data into a uint
+	uint32_t PackedHeader = PackedHeader_Pack(notification_header->Seq, notification_header->AckedSeq, notification_header->HistoryWordCount - 1);
+
+	// Write packed header
+	if (!bitbuf_write_int_byte_order(bitbuf, PackedHeader))
+		return false;
+
+	// Write ack history
+	// TSequenceHistory<HistorySize>::Write
+	{
+		size_t NumWords = MIN(notification_header->HistoryWordCount, SequenceHistoryWordCount);
+		for (size_t i = 0; i < NumWords; ++i)
+		{
+			if (!bitbuf_write_int_byte_order(bitbuf, notification_header->History[i]))
+				return false;
+		}
+	}
+
+	// TODO log
+	// UE_LOG_PACKET_NOTIFY(TEXT("FNetPacketNotify::WriteHeader - Seq %u, AckedSeq %u bReFresh %u HistorySizeInWords %u"), Seq, AckedSeq, bRefresh ? 1u : 0u,
+	// WrittenHistoryWordCount);
+	return true;
+}
+
+// FNetPacketNotify::WriteHeader
+bool packet_header_write(struct packet_header* packet_header, struct bitbuf* bitbuf)
+{
+	if (!packet_notify_WriteHeader(bitbuf, &packet_header->notification_header))
+		return false;
+
+	// UNetConnection::WriteDummyPacketInfo
+	if (!bitbuf_write_bit(bitbuf, packet_header->bHasPacketInfoPayload))
+		return false;
+
+	if (packet_header->bHasPacketInfoPayload)
+	{
+		// UNetConnection::WriteFinalPacketInfo
+		if (!bitbuf_write_int(bitbuf, packet_header->PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
+			return false;
+
+		if (!bitbuf_write_bit(bitbuf, packet_header->bHasServerFrameTime))
+			return false;
+
+		if (packet_header->bHasServerFrameTime)
+		{
+			if (!bitbuf_write_bytes(bitbuf, &packet_header->FrameTimeByte, 1))
+				return false;
+		}
+	}
+	return true;
 }

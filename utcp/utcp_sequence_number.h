@@ -18,7 +18,6 @@
 
 enum
 {
-	SeqNumberBits = SequenceNumberBits,
 	SeqNumberCount = ((SequenceType)1) << SequenceNumberBits,
 	SeqNumberHalf = ((SequenceType)1) << (SequenceNumberBits - 1),
 	SeqNumberMax = SeqNumberCount - 1u,

@@ -1,53 +1,8 @@
 ﻿#include "utcp_channel.h"
+#include "utcp_channel_internal.h"
 #include "utcp_def_internal.h"
-#include "utcp_utils.h"
 #include <assert.h>
 #include <string.h>
-
-struct utcp_channel* alloc_utcp_channel(int32_t InitInReliable, int32_t InitOutReliable)
-{
-	struct utcp_channel* utcp_channel = (struct utcp_channel*)utcp_realloc(NULL, sizeof(*utcp_channel));
-	memset(utcp_channel, 0, sizeof(*utcp_channel));
-
-	utcp_channel->InReliable = InitInReliable;
-	utcp_channel->OutReliable = InitOutReliable;
-	dl_list_init(&utcp_channel->InRec);
-	dl_list_init(&utcp_channel->OutRec);
-	dl_list_init(&utcp_channel->InPartialBunch);
-
-	return utcp_channel;
-}
-
-void free_utcp_channel(struct utcp_channel* utcp_channel)
-{
-	while (!dl_list_empty(&utcp_channel->InRec))
-	{
-		struct dl_list_node* dl_list_node = dl_list_pop_next(&utcp_channel->InRec);
-		struct utcp_bunch_node* cur_utcp_bunch_node = CONTAINING_RECORD(dl_list_node, struct utcp_bunch_node, dl_list_node);
-		utcp_realloc(cur_utcp_bunch_node, 0);
-		utcp_channel->NumInRec--;
-	}
-	assert(utcp_channel->NumInRec == 0);
-
-	while (!dl_list_empty(&utcp_channel->OutRec))
-	{
-		struct dl_list_node* dl_list_node = dl_list_pop_next(&utcp_channel->OutRec);
-		struct utcp_bunch_node* cur_utcp_bunch_node = CONTAINING_RECORD(dl_list_node, struct utcp_bunch_node, dl_list_node);
-		utcp_realloc(cur_utcp_bunch_node, 0);
-		utcp_channel->NumOutRec--;
-	}
-	assert(utcp_channel->NumOutRec == 0);
-
-	clear_partial_data(utcp_channel);
-
-	utcp_realloc(utcp_channel, 0);
-}
-
-void mark_channel_close(struct utcp_channel* utcp_channel, int8_t CloseReason)
-{
-	assert(CloseReason != -1);
-	utcp_channel->CloseReason = CloseReason;
-}
 
 struct utcp_bunch_node* alloc_utcp_bunch_node()
 {
@@ -313,89 +268,115 @@ int get_partial_bunch(struct utcp_channel* utcp_channel, struct utcp_bunch* bunc
 	return count;
 }
 
-static int binary_search(const void* key, const void* base, size_t num, size_t element_size, int (*compar)(const void*, const void*))
+static void utcp_close_channel(struct utcp_channels* utcp_channels, int ChIndex)
 {
-	int lo = 0;
-	int hi = (int)num - 1;
+	if (!utcp_channels->Channels[ChIndex])
+		return;
+	free_utcp_channel(utcp_channels->Channels[ChIndex]);
+	utcp_channels->Channels[ChIndex] = NULL;
+	open_channel_remove(&utcp_channels->open_channels, ChIndex);
+}
 
-	while (lo <= hi)
+void utcp_channels_uninit(struct utcp_channels* utcp_channels)
+{
+	for (int i = 0; i < _countof(utcp_channels->Channels); ++i)
 	{
-		// i might overflow if lo and hi are both large positive numbers.
-		int i = lo + ((hi - lo) >> 1);
-
-		int c = compar(key, (char*)base + i * element_size);
-		if (c == 0)
-			return i;
-		if (c > 0)
-			lo = i + 1;
-		else
-			hi = i - 1;
+		if (utcp_channels->Channels[i])
+		{
+			utcp_close_channel(utcp_channels, i);
+		}
 	}
-	return ~lo;
+
+	assert(utcp_channels->open_channels.num == 0);
+	open_channel_uninit(&utcp_channels->open_channels);
 }
 
-static int uint16_less(const void* l, const void* r)
+struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channels, struct utcp_bunch* utcp_bunch)
 {
-	return *(uint16_t*)l - *(uint16_t*)r;
+	struct utcp_channel* utcp_channel = utcp_channels->Channels[utcp_bunch->ChIndex];
+	if (!utcp_channel)
+	{
+		if (utcp_bunch->bOpen)
+		{
+			utcp_channel = alloc_utcp_channel(utcp_channels->InitInReliable, utcp_channels->InitOutReliable);
+			utcp_channels->Channels[utcp_bunch->ChIndex] = utcp_channel;
+			open_channel_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
+		}
+		else
+		{
+			assert(false);
+			utcp_log(Warning, "utcp_get_channel failed");
+		}
+
+		utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
+	}
+	if (utcp_bunch->bClose && utcp_channel)
+	{
+		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
+		utcp_channels->bHasChannelClose = true;
+	}
+	return utcp_channel;
 }
 
-static bool open_channel_resize(struct utcp_open_channels* utcp_open_channels)
+void utcp_channels_on_ack(struct utcp_channels* utcp_channels, int32_t AckPacketId)
 {
-	if (utcp_open_channels->num < utcp_open_channels->cap)
-		return true;
+	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
+	for (int j = 0; j < utcp_channels->open_channels.num; ++j)
+	{
+		uint16_t ChIndex = utcp_channels->open_channels.channels[j];
+		assert(utcp_channels->Channels[ChIndex]);
 
-	assert(utcp_open_channels->num == utcp_open_channels->cap);
-
-	int cap = utcp_open_channels->cap;
-	assert((!!cap) == (!!utcp_open_channels->channels));
-
-	cap = cap != 0 ? cap : 16;
-	cap *= 2;
-	assert(cap > 0 && cap < DEFAULT_MAX_CHANNEL_SIZE * 2);
-
-	uint16_t* channels = utcp_realloc(utcp_open_channels->channels, cap);
-	if (!channels)
-		return false;
-	utcp_open_channels->channels = channels;
-	utcp_open_channels->cap = cap;
-	return true;
+		struct utcp_channel* utcp_channel = utcp_channels->Channels[ChIndex];
+		int count = remove_ougoing_data(utcp_channel, AckPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+		for (int i = 0; i < count; ++i)
+		{
+			free_utcp_bunch_node(utcp_bunch_node[i]);
+		}
+	}
 }
 
-void open_channel_uninit(struct utcp_open_channels* utcp_open_channels)
+void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, WriteBitsToSendBufferFn WriteBitsToSendBuffer, struct utcp_connection* fd)
 {
-	if (utcp_open_channels->channels)
-		utcp_realloc(utcp_open_channels->channels, 0);
+	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
+	for (int j = 0; j < utcp_channels->open_channels.num; ++j)
+	{
+		uint16_t ChIndex = utcp_channels->open_channels.channels[j];
+		assert(utcp_channels->Channels[ChIndex]);
+
+		// UChannel::ReceivedNak
+		struct utcp_channel* utcp_channel = utcp_channels->Channels[ChIndex];
+		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
+		for (int i = 0; i < count; ++i)
+		{
+			int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+			utcp_bunch_node[i]->packet_id = packet_id;
+			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
+
+			utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
+		}
+	}
 }
 
-bool open_channel_add(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex)
+void utcp_delay_close_channel(struct utcp_channels* utcp_channels)
 {
-	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
-	if (pos >= 0)
-		return true;
+	if (!utcp_channels->bHasChannelClose)
+		return;
+	utcp_channels->bHasChannelClose = false;
 
-	if (!open_channel_resize(utcp_open_channels))
-		return false;
+	for (int i = utcp_channels->open_channels.num; i > 0; --i)
+	{
+		uint16_t ChIndex = utcp_channels->open_channels.channels[i - 1];
+		if (utcp_channels->Channels[ChIndex] && !utcp_channels->Channels[ChIndex]->bClose)
+			continue;
 
-	pos = ~pos;
-
-	uint16_t* src = utcp_open_channels->channels + pos;
-	uint16_t* dst = src + 1;
-	int count = utcp_open_channels->num - pos;
-	memmove(dst, src, count * sizeof(uint16_t));
-	utcp_open_channels->channels[pos] = ChIndex;
-	utcp_open_channels->num++;
-	return true;
-}
-
-bool open_channel_remove(struct utcp_open_channels* utcp_open_channels, uint16_t ChIndex)
-{
-	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
-	if (pos < 0)
-		return false;
-	uint16_t* dst = utcp_open_channels->channels + pos;
-	uint16_t* src = dst + 1;
-	int count = utcp_open_channels->num - pos - 1;
-	memmove(dst, src, count * sizeof(uint16_t));
-	utcp_open_channels->num--;
-	return true;
+		if (utcp_channels->Channels[ChIndex])
+		{
+			utcp_close_channel(utcp_channels, ChIndex);
+		}
+		else
+		{
+			open_channel_remove(&utcp_channels->open_channels, ChIndex);
+			utcp_log(Warning, "fd->Channels is null:%hu", ChIndex);
+		}
+	}
 }

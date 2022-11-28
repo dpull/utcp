@@ -2,6 +2,7 @@
 extern "C" {
 #include "utcp/utcp.h"
 #include "utcp/utcp_channel.h"
+#include "utcp/utcp_channel_internal.h"
 #include "utcp/utcp_def.h"
 }
 #include <cstring>
@@ -68,14 +69,14 @@ inline utcp_listener* new_utcp_listener()
 	return listener;
 }
 
-inline utcp_open_channels* new_open_channels()
+inline utcp_opened_channels* new_open_channels()
 {
-	auto open_channels = new utcp_open_channels;
+	auto open_channels = new utcp_opened_channels;
 	memset(open_channels, 0, sizeof(*open_channels));
 	return open_channels;
 }
 
-inline void delete_open_channels(utcp_open_channels* open_channels)
+inline void delete_open_channels(utcp_opened_channels* open_channels)
 {
 	open_channel_uninit(open_channels);
 	delete open_channels;
@@ -85,4 +86,4 @@ using utcp_bunch_node_raii = utcp_raii<utcp_bunch_node, alloc_utcp_bunch_node, f
 using utcp_channel_rtti = utcp_raii<utcp_channel, alloc_utcp_channel_zero, free_utcp_channel>;
 using utcp_connection_rtti = utcp_raii<utcp_connection, new_utcp_connection, delete_utcp_connection>;
 using utcp_listener_rtti = utcp_raii<utcp_listener, new_utcp_listener, nullptr>;
-using utcp_open_channels_rtti = utcp_raii<utcp_open_channels, new_open_channels, delete_open_channels>;
+using utcp_open_channels_rtti = utcp_raii<utcp_opened_channels, new_open_channels, delete_open_channels>;

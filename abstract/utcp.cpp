@@ -60,12 +60,12 @@ void event_handler::on_accept(bool reconnect)
 
 void event_handler::on_connect(bool reconnect)
 {
-	throw;
+
 }
 
 void event_handler::on_disconnect(int close_reason)
 {
-	throw;
+
 }
 
 void event_handler::on_outgoing(const void* data, int len)
@@ -80,7 +80,7 @@ void event_handler::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 
 void event_handler::on_delivery_status(int32_t packet_id, bool ack)
 {
-	throw;
+
 }
 
 large_bunch::large_bunch(const uint8_t* data, size_t data_bits_len)

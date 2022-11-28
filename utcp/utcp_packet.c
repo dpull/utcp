@@ -3,15 +3,13 @@
 #include "utcp.h"
 #include "utcp_bunch.h"
 #include "utcp_channel.h"
-#include "utcp_handshake.h"
 #include "utcp_packet_notify.h"
+#include "utcp_sequence_number.h"
 #include "utcp_utils.h"
 #include <assert.h>
 
 enum
 {
-	NumBitsForJitterClockTimeInHeader = 10,
-
 	MAX_PACKET_TRAILER_BITS = 1,
 	MAX_PACKET_RELIABLE_SEQUENCE_HEADER_BITS = 32 /*PackedHeader*/ + MaxSequenceHistoryLength,
 	MAX_PACKET_INFO_HEADER_BITS = 1 /*bHasPacketInfo*/ + NumBitsForJitterClockTimeInHeader + 1 /*bHasServerFrameTime*/ + 8 /*ServerFrameTime*/,
@@ -33,56 +31,11 @@ static inline int32_t MakeRelative(int32_t Value, int32_t Reference, int32_t Max
 
 static struct utcp_channel* utcp_get_channel(struct utcp_connection* fd, struct utcp_bunch* utcp_bunch)
 {
-	struct utcp_channel* utcp_channel = fd->Channels[utcp_bunch->ChIndex];
-	if (!utcp_channel)
-	{
-		if (utcp_bunch->bOpen)
-		{
-			utcp_channel = alloc_utcp_channel(fd->InitInReliable, fd->InitOutReliable);
-			fd->Channels[utcp_bunch->ChIndex] = utcp_channel;
-			open_channel_add(&fd->open_channels, utcp_bunch->ChIndex);
-		}
-		else
-		{
-			assert(false);
-			utcp_log(Warning, "utcp_get_channel failed");
-		}
-
-		utcp_log(Log, "conn:%p create channel:%hu", fd, utcp_bunch->ChIndex);
-	}
-	if (utcp_bunch->bClose && utcp_channel)
-	{
-		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
-		fd->bHasChannelClose = true;
-	}
 	if (utcp_bunch->bClose && utcp_bunch->ChIndex == 0)
 	{
 		utcp_mark_close(fd, ControlChannelClose);
 	}
-	return utcp_channel;
-}
-
-static void utcp_close_channel(struct utcp_connection* fd, int ChIndex)
-{
-	if (!fd->Channels[ChIndex])
-		return;
-	free_utcp_channel(fd->Channels[ChIndex]);
-	fd->Channels[ChIndex] = NULL;
-	open_channel_remove(&fd->open_channels, ChIndex);
-
-	utcp_log(Log, "conn:%p close channel:%hu", fd, ChIndex);
-}
-
-void utcp_closeall_channel(struct utcp_connection* fd)
-{
-	for (int i = 0; i < _countof(fd->Channels); ++i)
-	{
-		if (fd->Channels[i])
-		{
-			utcp_close_channel(fd, i);
-		}
-	}
-	assert(fd->open_channels.num == 0);
+	return utcp_channels_get_channel(&fd->channels, utcp_bunch);
 }
 
 // UChannel::ReceivedNextBunch
@@ -257,57 +210,77 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 	}
 }
 
+//  UNetConnection::ReceivedAck
+static void ReceivedAck(struct utcp_connection* fd, int32_t AckPacketId)
+{
+	// Advance OutAckPacketId
+	fd->OutAckPacketId = AckPacketId;
+
+	utcp_channels_on_ack(&fd->channels, AckPacketId);
+	utcp_delivery_status(fd, AckPacketId, true);
+}
+
+// UNetConnection::ReceivedNak
+static void ReceivedNak(struct utcp_connection* fd, int32_t NakPacketId)
+{
+	utcp_channels_on_nak(&fd->channels, NakPacketId, WriteBitsToSendBuffer, fd);
+	utcp_delivery_status(fd, NakPacketId, false);
+}
+
+// auto HandlePacketNotification = [&Header, &ChannelsToClose, this](FNetPacketNotify::SequenceNumberT AckedSequence, bool bDelivered)
+static void HandlePacketNotification(void* vfd, uint16_t AckedSequence, bool bDelivered)
+{
+	struct utcp_connection* fd = (struct utcp_connection*)vfd;
+
+	// Increase LastNotifiedPacketId, this is a full packet Id
+	++fd->LastNotifiedPacketId;
+
+	// Sanity check
+	if (seq_num_init(fd->LastNotifiedPacketId) != AckedSequence)
+	{
+		utcp_log(Warning, "[HandlePacketNotification]LastNotifiedPacketId != AckedSequence");
+		// Close(ENetCloseResult::AckSequenceMismatch);
+
+		return;
+	}
+
+	if (bDelivered)
+	{
+		ReceivedAck(fd, fd->LastNotifiedPacketId);
+	}
+	else
+	{
+		ReceivedNak(fd, fd->LastNotifiedPacketId);
+	};
+}
+
+// UNetConnection::InitSequence
+void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence)
+{
+	fd->InPacketId = IncomingSequence - 1;
+	fd->OutPacketId = OutgoingSequence;
+	fd->OutAckPacketId = OutgoingSequence - 1;
+	fd->LastNotifiedPacketId = fd->OutAckPacketId;
+
+	// Initialize the reliable packet sequence (more useful/effective at preventing attacks)
+	fd->channels.InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+	fd->channels.InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
+
+	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
+}
+
 // UNetConnection::ReceivedPacket
 bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
-	struct notification_header notification_header;
-	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
-	if (ret)
+	struct packet_header packet_header;
+	int ret = packet_header_read(&packet_header, bitbuf);
+	if (ret != 0)
 	{
-		utcp_log(Warning, "Failed to read PacketHeader.%d", ret);
-		utcp_mark_close(fd, ReadHeaderFail);
-		return false;
-	}
-	uint8_t bHasPacketInfoPayload = true;
-	if (!bitbuf_read_bit(bitbuf, &bHasPacketInfoPayload))
-	{
-		utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 1);
-		utcp_mark_close(fd, ReadHeaderExtraFail);
+		utcp_mark_close(fd, ret);
 		return false;
 	}
 
-	if (bHasPacketInfoPayload)
-	{
-		uint32_t PacketJitterClockTimeMS = 0;
-		if (!bitbuf_read_int(bitbuf, &PacketJitterClockTimeMS, 1 << NumBitsForJitterClockTimeInHeader))
-		{
-			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 2);
-			utcp_mark_close(fd, ReadHeaderExtraFail);
-			return false;
-		}
-
-		// UNetConnection::ReadPacketInfo
-		uint8_t bHasServerFrameTime;
-		if (!bitbuf_read_bit(bitbuf, &bHasServerFrameTime))
-		{
-			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 3);
-			utcp_mark_close(fd, ReadHeaderExtraFail);
-			return false;
-		}
-
-		if (bHasServerFrameTime)
-		{
-			uint8_t FrameTimeByte = 0;
-			if (!bitbuf_read_bytes(bitbuf, &FrameTimeByte, 1))
-			{
-				utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 4);
-				utcp_mark_close(fd, ReadHeaderExtraFail);
-				return false;
-			}
-		}
-	}
-
-	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
+	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &packet_header.notification_header);
 	if (PacketSequenceDelta <= 0)
 	{
 		// Protect against replay attacks
@@ -315,7 +288,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		// The only bunch we would process would be unreliable RPC's, which could allow for replay attacks
 		// So rather than add individual protection for unreliable RPC's as well, just kill it at the source,
 		// which protects everything in one fell swoop
-		utcp_log(Verbose, "'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", notification_header.Seq, fd->packet_notify.InSeq);
+		utcp_log(Verbose, "'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", packet_header.notification_header.Seq, fd->packet_notify.InSeq);
 		return true;
 	}
 
@@ -331,7 +304,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	fd->InPacketId += PacketSequenceDelta;
 	// Update incoming sequence data and deliver packet notifications
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
-	packet_notify_Update(fd, &fd->packet_notify, &notification_header);
+	packet_notify_Update(HandlePacketNotification, fd, &fd->packet_notify, &packet_header.notification_header);
 
 	bool bSkipAck = false;
 	while (bitbuf->num < bitbuf->size)
@@ -339,9 +312,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		bool bLocalSkipAck = false;
 		ReceivedRawBunch(fd, bitbuf, &bLocalSkipAck);
 		if (bLocalSkipAck)
-		{
 			bSkipAck = true;
-		}
 	}
 
 	if (bSkipAck)
@@ -358,7 +329,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
-	int ret = packet_notify_ReadHeader(fd, bitbuf, &notification_header);
+	int ret = packet_notify_ReadHeader(bitbuf, &notification_header);
 	if (ret)
 	{
 		return ret;
@@ -385,6 +356,17 @@ int64_t GetFreeSendBufferBits(struct utcp_connection* fd)
 	return NumberOfFreeBits;
 }
 
+// StatelessConnectHandlerComponent::Outgoing
+static int WritePacketOutgoingHeader(struct bitbuf* bitbuf)
+{
+	assert(bitbuf->num == 0);
+	write_magic_header(bitbuf);
+
+	uint8_t bHandshakePacket = 0;
+	bitbuf_write_bit(bitbuf, bHandshakePacket);
+	return 0;
+}
+
 // UNetConnection::WritePacketHeader
 void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
@@ -396,11 +378,19 @@ void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	bitbuf->num = 0;
 
 	// UNetConnection::LowLevelSend-->PacketHandler::Outgoing_Internal-->StatelessConnectHandlerComponent::Outgoing
-	// 按照语义进行了修改, 减少内存拷贝
-	Outgoing(bitbuf);
+	WritePacketOutgoingHeader(bitbuf);
 
-	// Write notification header or refresh the header if used space is the same.
-	bool bWroteHeader = packet_notify_WriteHeader(&fd->packet_notify, bitbuf, bIsHeaderUpdate);
+	struct packet_header packet_header;
+	bool bWroteHeader = false;
+	if (packet_notify_fill_notification_header(&fd->packet_notify, &packet_header.notification_header, bIsHeaderUpdate))
+	{
+		// Write notification header or refresh the header if used space is the same.
+		packet_header.bHasPacketInfoPayload = 0;
+		if (packet_header_write(&packet_header, bitbuf))
+		{
+			bWroteHeader = true;
+		}
+	}
 
 	// Jump back to where we came from.
 	if (bIsHeaderUpdate)
@@ -413,14 +403,6 @@ void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 			fd->HasDirtyAcks = 0u;
 		}
 	}
-}
-
-// UNetConnection::WriteDummyPacketInfo
-void WriteDummyPacketInfo(struct utcp_connection* fd, struct bitbuf* bitbuf)
-{
-	// The first packet of a frame will include the packet info payload
-	const uint8_t bHasPacketInfoPayload = 0;
-	bitbuf_write_bit(bitbuf, bHasPacketInfoPayload);
 }
 
 // void UNetConnection::PrepareWriteBitsToSendBuffer
@@ -444,7 +426,6 @@ void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t Size
 		WritePacketHeader(fd, &bitbuf);
 
 		// Pre-write the bits for the packet info
-		WriteDummyPacketInfo(fd, &bitbuf);
 
 		// We do not allow the first bunch to merge with the ack data as this will "revert" the ack data.
 
@@ -483,13 +464,6 @@ int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t*
 	}
 
 	return RememberedPacketId;
-}
-
-// UNetConnection::WriteFinalPacketInfo
-void WriteFinalPacketInfo(struct utcp_connection* fd, struct bitbuf* bitbuf)
-{
-	// Write Jitter clock time
-	// 暂时不移植这个功能了
 }
 
 // UNetConnection::SendRawBunch
@@ -555,30 +529,6 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 	}
 
 	return PacketId;
-}
-
-void utcp_delay_close_channel(struct utcp_connection* fd)
-{
-	if (!fd->bHasChannelClose)
-		return;
-	fd->bHasChannelClose = false;
-	
-	for (int i = fd->open_channels.num; i > 0; --i)
-	{
-		uint16_t ChIndex = fd->open_channels.channels[i - 1];
-		if (fd->Channels[ChIndex] && !fd->Channels[ChIndex]->bClose)
-			continue;
-
-		if (fd->Channels[ChIndex])
-		{
-			utcp_close_channel(fd, ChIndex);
-		}
-		else
-		{
-			open_channel_remove(&fd->open_channels, ChIndex);
-			utcp_log(Warning, "fd->Channels is null:%hu", ChIndex);
-		}
-	}
 }
 
 // UNetConnection::WriteBitsToSendBuffer

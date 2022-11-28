@@ -158,8 +158,7 @@ void utcp_init(struct utcp_connection* fd, void* userdata)
 void utcp_uninit(struct utcp_connection* fd)
 {
 	utcp_mark_close(fd, Cleanup);
-	utcp_closeall_channel(fd);
-	open_channel_uninit(&fd->open_channels);
+	utcp_channels_uninit(&fd->channels);
 }
 
 void utcp_connect(struct utcp_connection* fd)
@@ -247,7 +246,7 @@ int utcp_update(struct utcp_connection* fd)
 		}
 	}
 
-	utcp_delay_close_channel(fd);
+	utcp_delay_close_channel(&fd->channels);
 
 	if (!fd->bClose)
 		return 0;
@@ -308,7 +307,6 @@ int utcp_send_flush(struct utcp_connection* fd)
 	// if we update ack, we also update received ack associated with outgoing seq
 	// so we know how many ack bits we need to write (which is updated in received packet)
 	WritePacketHeader(fd, &bitbuf);
-	WriteFinalPacketInfo(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
 	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));

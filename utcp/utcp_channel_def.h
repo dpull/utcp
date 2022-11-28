@@ -4,11 +4,11 @@
 
 #include "3rd/dl_list.h"
 #include "utcp_def.h"
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #define UTCP_MAX_PACKET 1024
+#define DEFAULT_MAX_CHANNEL_SIZE 32767
 
 struct utcp_bunch_node
 {
@@ -42,9 +42,18 @@ struct utcp_channel
 	uint8_t CloseReason : 4;
 };
 
-struct utcp_open_channels
+struct utcp_opened_channels
 {
 	int32_t cap;
 	int32_t num;
 	uint16_t* channels;
+};
+
+struct utcp_channels
+{
+	struct utcp_channel* Channels[DEFAULT_MAX_CHANNEL_SIZE];
+	struct utcp_opened_channels open_channels;
+	int32_t InitOutReliable;
+	int32_t InitInReliable;
+	uint8_t bHasChannelClose;
 };

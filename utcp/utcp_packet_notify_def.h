@@ -15,7 +15,6 @@ enum
 	MaxSequenceHistoryLength = 256,
 	SequenceHistoryBitsPerWord = (sizeof(SequenceHistoryWord) * 8),
 	SequenceHistoryWordCount = (MaxSequenceHistoryLength / SequenceHistoryBitsPerWord),
-	DEFAULT_MAX_CHANNEL_SIZE = 32767,
 };
 
 union sent_ack_data {

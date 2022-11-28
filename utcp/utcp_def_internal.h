@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "utcp_bunch_def.h"
+#include "utcp_channel_def.h"
 #include "utcp_def.h"
 #include "utcp_packet_notify_def.h"
 
@@ -89,7 +89,6 @@ struct utcp_connection
 	uint8_t mode : 2;
 	uint8_t state : 2;
 
-	uint8_t bHasChannelClose : 1;
 	uint8_t bLastChallengeSuccessAddress : 1;
 
 	
@@ -138,13 +137,10 @@ struct utcp_connection
 
 	struct packet_notify packet_notify;
 
-	int32_t InitOutReliable;
-	int32_t InitInReliable;
-	struct utcp_channel* Channels[DEFAULT_MAX_CHANNEL_SIZE];
-	struct utcp_open_channels open_channels;
+	struct utcp_channels channels;
 
 	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
-	uint32_t HasDirtyAcks;
+	uint32_t HasDirtyAcks; // TODO 这个变量究竟做什么
 
 	uint8_t SendBuffer[UTCP_MAX_PACKET + 32 /*MagicHeader*/ + 1 /*EndBits*/];
 	size_t SendBufferBitsNum;
