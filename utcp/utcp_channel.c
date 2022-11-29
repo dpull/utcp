@@ -274,7 +274,7 @@ static void utcp_close_channel(struct utcp_channels* utcp_channels, int ChIndex)
 		return;
 	free_utcp_channel(utcp_channels->Channels[ChIndex]);
 	utcp_channels->Channels[ChIndex] = NULL;
-	open_channel_remove(&utcp_channels->open_channels, ChIndex);
+	opened_channels_remove(&utcp_channels->open_channels, ChIndex);
 }
 
 void utcp_channels_uninit(struct utcp_channels* utcp_channels)
@@ -288,7 +288,7 @@ void utcp_channels_uninit(struct utcp_channels* utcp_channels)
 	}
 
 	assert(utcp_channels->open_channels.num == 0);
-	open_channel_uninit(&utcp_channels->open_channels);
+	opened_channels_uninit(&utcp_channels->open_channels);
 }
 
 struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channels, struct utcp_bunch* utcp_bunch)
@@ -300,7 +300,7 @@ struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channe
 		{
 			utcp_channel = alloc_utcp_channel(utcp_channels->InitInReliable, utcp_channels->InitOutReliable);
 			utcp_channels->Channels[utcp_bunch->ChIndex] = utcp_channel;
-			open_channel_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
+			opened_channels_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
 		}
 		else
 		{
@@ -335,7 +335,7 @@ void utcp_channels_on_ack(struct utcp_channels* utcp_channels, int32_t AckPacket
 	}
 }
 
-void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, WriteBitsToSendBufferFn WriteBitsToSendBuffer, struct utcp_connection* fd)
+void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, write_bunch_fn WriteBitsToSendBuffer, struct utcp_connection* fd)
 {
 	struct utcp_bunch_node* utcp_bunch_node[UTCP_RELIABLE_BUFFER];
 	for (int j = 0; j < utcp_channels->open_channels.num; ++j)
@@ -375,7 +375,7 @@ void utcp_delay_close_channel(struct utcp_channels* utcp_channels)
 		}
 		else
 		{
-			open_channel_remove(&utcp_channels->open_channels, ChIndex);
+			opened_channels_remove(&utcp_channels->open_channels, ChIndex);
 			utcp_log(Warning, "fd->Channels is null:%hu", ChIndex);
 		}
 	}

@@ -6,7 +6,6 @@
 #include "utcp_def_internal.h"
 
 void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence);
-void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq);
 bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf);
 int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf);
 int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len);

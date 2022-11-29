@@ -56,7 +56,7 @@ static inline void mark_channel_close(struct utcp_channel* utcp_channel, int8_t 
 	}
 }
 
-static inline void open_channel_uninit(struct utcp_opened_channels* utcp_open_channels)
+static inline void opened_channels_uninit(struct utcp_opened_channels* utcp_open_channels)
 {
 	if (utcp_open_channels->channels)
 		utcp_realloc(utcp_open_channels->channels, 0);
@@ -88,7 +88,7 @@ static inline int uint16_less(const void* l, const void* r)
 	return *(uint16_t*)l - *(uint16_t*)r;
 }
 
-static bool open_channel_resize(struct utcp_opened_channels* utcp_open_channels)
+static bool opened_channels_resize(struct utcp_opened_channels* utcp_open_channels)
 {
 	if (utcp_open_channels->num < utcp_open_channels->cap)
 		return true;
@@ -110,13 +110,13 @@ static bool open_channel_resize(struct utcp_opened_channels* utcp_open_channels)
 	return true;
 }
 
-static inline bool open_channel_add(struct utcp_opened_channels* utcp_open_channels, uint16_t ChIndex)
+static inline bool opened_channels_add(struct utcp_opened_channels* utcp_open_channels, uint16_t ChIndex)
 {
 	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
 	if (pos >= 0)
 		return true;
 
-	if (!open_channel_resize(utcp_open_channels))
+	if (!opened_channels_resize(utcp_open_channels))
 		return false;
 
 	pos = ~pos;
@@ -130,7 +130,7 @@ static inline bool open_channel_add(struct utcp_opened_channels* utcp_open_chann
 	return true;
 }
 
-static inline bool open_channel_remove(struct utcp_opened_channels* utcp_open_channels, uint16_t ChIndex)
+static inline bool opened_channels_remove(struct utcp_opened_channels* utcp_open_channels, uint16_t ChIndex)
 {
 	int pos = binary_search(&ChIndex, utcp_open_channels->channels, utcp_open_channels->num, sizeof(uint16_t), uint16_less);
 	if (pos < 0)

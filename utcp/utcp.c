@@ -126,11 +126,10 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 
 void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
-	conn->bLastChallengeSuccessAddress = 1;
-
 	if (!reconnect)
 	{
 		assert(conn->mode == ModeUnInitialized);
+		assert(conn->challenge_data == NULL);
 		conn->mode = Server;
 
 		memcpy(conn->AuthorisedCookie, listener->AuthorisedCookie, sizeof(conn->AuthorisedCookie));
@@ -146,7 +145,9 @@ struct utcp_connection* utcp_connection_create()
 void utcp_connection_destroy(struct utcp_connection* fd)
 {
 	if (fd)
+	{
 		utcp_realloc(fd, 0);
+	}
 }
 
 void utcp_init(struct utcp_connection* fd, void* userdata)
@@ -159,13 +160,23 @@ void utcp_uninit(struct utcp_connection* fd)
 {
 	utcp_mark_close(fd, Cleanup);
 	utcp_channels_uninit(&fd->channels);
+	if (fd->challenge_data)
+	{
+		utcp_realloc(fd->challenge_data, 0);
+		fd->challenge_data = NULL;
+	}
 }
 
 void utcp_connect(struct utcp_connection* fd)
 {
 	assert(fd->mode == ModeUnInitialized);
 	fd->mode = Client;
-	fd->bBeganHandshaking = true;
+
+	assert(!fd->challenge_data);
+	fd->challenge_data = (struct utcp_challenge_data*)utcp_realloc(NULL, sizeof(*fd->challenge_data));
+	memset(fd->challenge_data, 0, sizeof(sizeof(*fd->challenge_data)));
+	fd->challenge_data->bBeganHandshaking = true;
+
 	NotifyHandshakeBegin(fd);
 }
 
@@ -214,12 +225,12 @@ int utcp_update(struct utcp_connection* fd)
 
 	if (fd->mode == Client)
 	{
-		if (fd->state != Initialized && fd->LastClientSendTimestamp != 0)
+		if (fd->state != Initialized && fd->challenge_data->LastClientSendTimestamp != 0)
 		{
-			int64_t LastSendTimeDiff = now - fd->LastClientSendTimestamp;
+			int64_t LastSendTimeDiff = now - fd->challenge_data->LastClientSendTimestamp;
 			if (LastSendTimeDiff > 1000)
 			{
-				const bool bRestartChallenge = now - fd->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
+				const bool bRestartChallenge = now - fd->challenge_data->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
 
 				if (bRestartChallenge)
 				{
@@ -230,9 +241,9 @@ int utcp_update(struct utcp_connection* fd)
 				{
 					NotifyHandshakeBegin(fd);
 				}
-				else if (fd->state == InitializedOnLocal && fd->LastTimestamp != 0.0)
+				else if (fd->state == InitializedOnLocal && fd->challenge_data->LastTimestamp != 0.0)
 				{
-					SendChallengeResponse(fd, fd->LastSecretId, fd->LastTimestamp, fd->LastCookie);
+					SendChallengeResponse(fd, fd->challenge_data->LastSecretId, fd->challenge_data->LastTimestamp, fd->challenge_data->LastCookie);
 				}
 			}
 		}
@@ -314,7 +325,7 @@ int utcp_send_flush(struct utcp_connection* fd)
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;
 
-	packet_notify_CommitAndIncrementOutSeq(&fd->packet_notify);
+	packet_notify_commit_and_inc_outseq(&fd->packet_notify);
 	fd->LastSendTime = now;
 	fd->OutPacketId++;
 

@@ -78,20 +78,10 @@ struct utcp_listener
 	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 };
 
-struct utcp_connection
+struct utcp_challenge_data
 {
-	void* userdata;
-
-	uint8_t bClose : 1;
-	uint8_t CloseReason : 7;
-
-	// 握手相关
-	uint8_t mode : 2;
-	uint8_t state : 2;
-
 	uint8_t bLastChallengeSuccessAddress : 1;
 
-	
 	/** Whether or not component handshaking has begun */
 	uint8_t bBeganHandshaking : 1;
 
@@ -107,25 +97,33 @@ struct utcp_connection
 	/** The Timestamp value of the last challenge response sent */
 	double LastTimestamp;
 
-	/** The cookie which completed the connection handshake. */
-	uint8_t AuthorisedCookie[COOKIE_BYTE_SIZE];
-
-	/** The initial server sequence value, from the last successful handshake */
-	int32_t LastServerSequence;
-
-	/** The initial client sequence value, from the last successful handshake */
-	int32_t LastClientSequence;
-
 	/** The SecretId value of the last challenge response sent */
 	uint8_t LastSecretId;
 
 	/** The Cookie value of the last challenge response sent. Will differ from AuthorisedCookie, if a handshake retry is triggered. */
 	uint8_t LastCookie[COOKIE_BYTE_SIZE];
 
-	int64_t LastReceiveRealtime; // Last time a packet was received, using real time seconds (FPlatformTime::Seconds)
-
 	/** The local (client) time at which the last restart handshake request was received */
 	int64_t LastRestartPacketTimestamp;
+};
+
+struct utcp_connection
+{
+	void* userdata;
+
+	uint8_t bClose : 1;
+	uint8_t CloseReason : 7;
+
+	// 握手相关
+	uint8_t mode : 2;
+	uint8_t state : 2;
+
+	/** The cookie which completed the connection handshake. */
+	uint8_t AuthorisedCookie[COOKIE_BYTE_SIZE];
+
+	int64_t LastReceiveRealtime; // Last time a packet was received, using real time seconds (FPlatformTime::Seconds)
+
+	struct utcp_challenge_data* challenge_data;
 
 	// packet相关
 	int32_t InPacketId;		// Full incoming packet index.

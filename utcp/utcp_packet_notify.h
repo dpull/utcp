@@ -23,14 +23,16 @@ struct packet_header
 	uint8_t FrameTimeByte;
 };
 
-int packet_notify_ReadHeader(struct bitbuf* bitbuf, struct notification_header* notification_header);
-int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header);
+void packet_notify_init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq);
 
-typedef void (*HandlePacketNotificationFn)(void* fd, uint16_t AckedSequence, bool bDelivered);
-int32_t packet_notify_Update(HandlePacketNotificationFn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header);
+int packet_notify_read_header(struct bitbuf* bitbuf, struct notification_header* notification_header);
+int32_t packet_notify_delta_seq(struct packet_notify* packet_notify, struct notification_header* notification_header);
 
-void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck);
-uint16_t packet_notify_CommitAndIncrementOutSeq(struct packet_notify* packet_notify);
+typedef void (*handle_notify_fn)(void* fd, uint16_t AckedSequence, bool bDelivered);
+int32_t packet_notify_update(handle_notify_fn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header);
+
+void packet_notify_ack_seq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck);
+uint16_t packet_notify_commit_and_inc_outseq(struct packet_notify* packet_notify);
 bool packet_notify_fill_notification_header(struct packet_notify* packet_notify, struct notification_header* notification_header, bool bRefresh);
 
 int packet_header_read(struct packet_header* packet_header, struct bitbuf* bitbuf);

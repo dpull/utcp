@@ -266,7 +266,7 @@ void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, in
 	fd->channels.InitInReliable = IncomingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 	fd->channels.InitOutReliable = OutgoingSequence & (UTCP_MAX_CHSEQUENCE - 1);
 
-	packet_notify_Init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
+	packet_notify_init(&fd->packet_notify, seq_num_init(fd->InPacketId), seq_num_init(fd->OutPacketId));
 }
 
 // UNetConnection::ReceivedPacket
@@ -280,7 +280,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		return false;
 	}
 
-	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &packet_header.notification_header);
+	int32_t PacketSequenceDelta = packet_notify_delta_seq(&fd->packet_notify, &packet_header.notification_header);
 	if (PacketSequenceDelta <= 0)
 	{
 		// Protect against replay attacks
@@ -304,7 +304,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	fd->InPacketId += PacketSequenceDelta;
 	// Update incoming sequence data and deliver packet notifications
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
-	packet_notify_Update(HandlePacketNotification, fd, &fd->packet_notify, &packet_header.notification_header);
+	packet_notify_update(HandlePacketNotification, fd, &fd->packet_notify, &packet_header.notification_header);
 
 	bool bSkipAck = false;
 	while (bitbuf->num < bitbuf->size)
@@ -317,11 +317,11 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 
 	if (bSkipAck)
 	{
-		packet_notify_AckSeq(&fd->packet_notify, fd->InPacketId, false);
+		packet_notify_ack_seq(&fd->packet_notify, fd->InPacketId, false);
 	}
 	else
 	{
-		packet_notify_AckSeq(&fd->packet_notify, fd->InPacketId, true);
+		packet_notify_ack_seq(&fd->packet_notify, fd->InPacketId, true);
 	}
 	return true;
 }
@@ -329,12 +329,12 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
-	int ret = packet_notify_ReadHeader(bitbuf, &notification_header);
+	int ret = packet_notify_read_header(bitbuf, &notification_header);
 	if (ret)
 	{
 		return ret;
 	}
-	int32_t PacketSequenceDelta = GetSequenceDelta(&fd->packet_notify, &notification_header);
+	int32_t PacketSequenceDelta = packet_notify_delta_seq(&fd->packet_notify, &notification_header);
 	if (PacketSequenceDelta <= 0)
 	{
 		return -8;

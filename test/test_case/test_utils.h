@@ -11,7 +11,7 @@ template <typename T, T* (*AllocFn)(), void (*FreeFn)(T*)> struct utcp_raii
 {
 	utcp_raii()
 	{
-		if (AllocFn)
+		if constexpr (AllocFn != nullptr)
 			p = AllocFn();
 		else
 			p = new T;
@@ -20,7 +20,7 @@ template <typename T, T* (*AllocFn)(), void (*FreeFn)(T*)> struct utcp_raii
 	{
 		if (!p)
 			return;
-		if (FreeFn)
+		if constexpr (FreeFn != nullptr)
 			FreeFn(p);
 		else
 			delete p;
@@ -78,7 +78,7 @@ inline utcp_opened_channels* new_open_channels()
 
 inline void delete_open_channels(utcp_opened_channels* open_channels)
 {
-	open_channel_uninit(open_channels);
+	opened_channels_uninit(open_channels);
 	delete open_channels;
 }
 
@@ -86,4 +86,4 @@ using utcp_bunch_node_raii = utcp_raii<utcp_bunch_node, alloc_utcp_bunch_node, f
 using utcp_channel_rtti = utcp_raii<utcp_channel, alloc_utcp_channel_zero, free_utcp_channel>;
 using utcp_connection_rtti = utcp_raii<utcp_connection, new_utcp_connection, delete_utcp_connection>;
 using utcp_listener_rtti = utcp_raii<utcp_listener, new_utcp_listener, nullptr>;
-using utcp_open_channels_rtti = utcp_raii<utcp_opened_channels, new_open_channels, delete_open_channels>;
+using utcp_opened_channels_rtti = utcp_raii<utcp_opened_channels, new_open_channels, delete_open_channels>;

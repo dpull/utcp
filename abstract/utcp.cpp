@@ -255,7 +255,7 @@ void conn::flush_packet_order_cache(bool forced_flush)
 	{
 		int packet_id = forced_flush ? -1 : utcp_expect_packet_id(_utcp_fd);
 		auto& view = _packet_order_cache.top();
-		if (packet_id != -1 && view._packet_id != packet_id)
+		if (packet_id != -1 && view._packet_id > packet_id)
 			break;
 
 		utcp_incoming(_utcp_fd, const_cast<uint8_t*>(view._data), view._data_len);

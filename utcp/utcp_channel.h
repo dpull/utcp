@@ -30,8 +30,8 @@ int get_partial_bunch(struct utcp_channel* utcp_channel, struct utcp_bunch* bunc
 void utcp_channels_uninit(struct utcp_channels* utcp_channels);
 struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channels, struct utcp_bunch* utcp_bunch);
 void utcp_channels_on_ack(struct utcp_channels* utcp_channels, int32_t AckPacketId);
-typedef int (*WriteBitsToSendBufferFn)(struct utcp_connection* fd, char* buffer, int bits_len);
-void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, WriteBitsToSendBufferFn WriteBitsToSendBuffer, struct utcp_connection* fd);
+typedef int (*write_bunch_fn)(struct utcp_connection* fd, char* buffer, int bits_len);
+void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, write_bunch_fn WriteBitsToSendBuffer, struct utcp_connection* fd);
 void utcp_delay_close_channel(struct utcp_channels* utcp_channels);
 
 

@@ -71,7 +71,8 @@ static uint16_t UpdateInAckSeqAck(struct packet_notify* packet_notify, int32_t A
 	return AckedSeq - MaxSequenceHistoryLength;
 }
 
-int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notification_header* notification_header)
+// GetSequenceDelta
+int32_t packet_notify_delta_seq(struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
 	if (seq_num_greater_than(notification_header->Seq, packet_notify->InSeq) && seq_num_greater_equal(notification_header->AckedSeq, packet_notify->OutAckSeq) &&
 		seq_num_greater_than(packet_notify->OutSeq, notification_header->AckedSeq))
@@ -85,7 +86,7 @@ int32_t GetSequenceDelta(struct packet_notify* packet_notify, struct notificatio
 }
 
 // FNetPacketNotify::Init
-void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq)
+void packet_notify_init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq)
 {
 	memset(packet_notify->InSeqHistory, 0, sizeof(packet_notify->InSeqHistory));
 	packet_notify->InSeq = InitialInSeq;
@@ -98,7 +99,7 @@ void packet_notify_Init(struct packet_notify* packet_notify, uint16_t InitialInS
 }
 
 // FNetPacketNotify::AckSeq
-void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck)
+void packet_notify_ack_seq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck)
 {
 	AckedSeq = seq_num_init(AckedSeq);
 	assert(AckedSeq == packet_notify->InSeq);
@@ -109,7 +110,7 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 
 		const bool bReportAcked = packet_notify->InAckSeq == AckedSeq ? IsAck : false;
 
-		utcp_log(Verbose, "packet_notify_AckSeq:%hd, %s", packet_notify->InAckSeq, bReportAcked ? "ACK" : "NAK");
+		utcp_log(Verbose, "packet_notify_ack_seq:%hd, %s", packet_notify->InAckSeq, bReportAcked ? "ACK" : "NAK");
 
 		// TSequenceHistory<HistorySize>::AddDeliveryStatus
 		{
@@ -129,9 +130,9 @@ void packet_notify_AckSeq(struct packet_notify* packet_notify, uint16_t AckedSeq
 }
 
 // FNetPacketNotify::Update
-int32_t packet_notify_Update(HandlePacketNotificationFn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
+int32_t packet_notify_update(handle_notify_fn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header)
 {
-	const int32_t InSeqDelta = GetSequenceDelta(packet_notify, notification_header);
+	const int32_t InSeqDelta = packet_notify_delta_seq(packet_notify, notification_header);
 	if (InSeqDelta > 0)
 	{
 		// ProcessReceivedAcks(NotificationData, InFunc);
@@ -199,7 +200,7 @@ int32_t packet_notify_Update(HandlePacketNotificationFn handle, void* fd, struct
 }
 
 // FNetPacketNotify::CommitAndIncrementOutSeq
-uint16_t packet_notify_CommitAndIncrementOutSeq(struct packet_notify* packet_notify)
+uint16_t packet_notify_commit_and_inc_outseq(struct packet_notify* packet_notify)
 {
 	// we have not written a header...this is a fail.
 	assert(packet_notify->WrittenHistoryWordCount != 0);
@@ -229,7 +230,7 @@ static size_t packet_notify_GetCurrentSequenceHistoryLength(struct packet_notify
 }
 
 // FNetPacketNotify::ReadHeader
-int packet_notify_ReadHeader(struct bitbuf* bitbuf, struct notification_header* notification_header)
+int packet_notify_read_header(struct bitbuf* bitbuf, struct notification_header* notification_header)
 {
 	// Read packed header
 	uint32_t PackedHeader = 0;
@@ -256,7 +257,7 @@ int packet_notify_ReadHeader(struct bitbuf* bitbuf, struct notification_header* 
 
 int packet_header_read(struct packet_header* packet_header, struct bitbuf* bitbuf)
 {
-	int ret = packet_notify_ReadHeader(bitbuf, &packet_header->notification_header);
+	int ret = packet_notify_read_header(bitbuf, &packet_header->notification_header);
 	if (ret != 0)
 	{
 		utcp_log(Warning, "Failed to read PacketHeader.%d", ret);
