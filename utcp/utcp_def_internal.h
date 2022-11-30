@@ -32,21 +32,6 @@ enum
 // The minimum amount of possible time a cookie may exist (for calculating when the clientside should timeout a challenge response)
 #define MIN_COOKIE_LIFETIME SECRET_UPDATE_TIME
 
-enum utcp_state
-{
-	UnInitialized,		// HandlerComponent not yet initialized
-	InitializedOnLocal, // Initialized on local instance
-	InitializeOnRemote, // Initialized on remote instance, not on local instance
-	Initialized			// Initialized on both local and remote instances
-};
-
-enum utcp_mode
-{
-	ModeUnInitialized,
-	Client, // Clientside PacketHandler
-	Server	// Serverside PacketHandler
-};
-
 struct utcp_listener
 {
 	void* userdata;
@@ -78,8 +63,18 @@ struct utcp_listener
 	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 };
 
+
+enum utcp_challenge_state
+{
+	UnInitialized,		// HandlerComponent not yet initialized
+	InitializedOnLocal, // Initialized on local instance
+	InitializeOnRemote, // Initialized on remote instance, not on local instance
+	Initialized			// Initialized on both local and remote instances
+};
+
 struct utcp_challenge_data
 {
+	uint8_t state : 2;
 	uint8_t bLastChallengeSuccessAddress : 1;
 
 	/** Whether or not component handshaking has begun */
@@ -113,10 +108,6 @@ struct utcp_connection
 
 	uint8_t bClose : 1;
 	uint8_t CloseReason : 7;
-
-	// 握手相关
-	uint8_t mode : 2;
-	uint8_t state : 2;
 
 	/** The cookie which completed the connection handshake. */
 	uint8_t AuthorisedCookie[COOKIE_BYTE_SIZE];

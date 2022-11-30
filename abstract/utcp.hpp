@@ -41,7 +41,7 @@ class event_handler
 
 struct packet_view
 {
-	uint32_t _packet_id;
+	int32_t _packet_id;
 	uint16_t _data_len;
 	uint8_t _data[NetMaxConstructedPartialBunchSizeBytes];
 

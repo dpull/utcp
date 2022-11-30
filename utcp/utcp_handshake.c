@@ -168,7 +168,7 @@ static bool ParseHandshakePacket(struct bitbuf* bitbuf, uint8_t* bOutRestartHand
 }
 
 // StatelessConnectHandlerComponent::IncomingConnectionless
-int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct bitbuf* bitbuf)
+static int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct bitbuf* bitbuf)
 {
 	read_magic_header(bitbuf);
 
@@ -244,13 +244,15 @@ int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct
 	return -6;
 }
 
-bool HasPassedChallenge(struct utcp_listener* fd, const char* address, bool* bOutRestartedHandshake)
+// StatelessConnectHandlerComponent::HasPassedChallenge
+static bool HasPassedChallenge(struct utcp_listener* fd, const char* address, bool* bOutRestartedHandshake)
 {
 	*bOutRestartedHandshake = fd->bRestartedHandshake;
 	return strncmp(fd->LastChallengeSuccessAddress, address, sizeof(fd->LastChallengeSuccessAddress)) == 0;
 }
 
-void ResetChallengeData(struct utcp_listener* fd)
+// StatelessConnectHandlerComponent::ResetChallengeData
+static void ResetChallengeData(struct utcp_listener* fd)
 {
 	fd->LastChallengeSuccessAddress[0] = '\0';
 	fd->bRestartedHandshake = false;
@@ -259,10 +261,52 @@ void ResetChallengeData(struct utcp_listener* fd)
 	memset(fd->AuthorisedCookie, 0, COOKIE_BYTE_SIZE);
 }
 
-// StatelessConnectHandlerComponent::NotifyHandshakeBegin
-void NotifyHandshakeBegin(struct utcp_connection* fd)
+// UIpNetDriver::ProcessConnectionlessPacket
+int process_connectionless_packet(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len)
 {
-	if (fd->mode != Client)
+	struct bitbuf bitbuf;
+	if (!bitbuf_read_init(&bitbuf, buffer, len))
+	{
+		return -1;
+	}
+
+	int ret = IncomingConnectionless(fd, address, &bitbuf);
+	if (ret)
+	{
+		return ret;
+	}
+
+	assert(bitbuf.num == bitbuf.size);
+
+	bool bPassedChallenge = false;
+	bool bRestartedHandshake = false;
+	// bool bIgnorePacket = true;
+
+	bPassedChallenge = HasPassedChallenge(fd, address, &bRestartedHandshake);
+	if (bPassedChallenge)
+	{
+		if (bRestartedHandshake)
+		{
+			utcp_on_accept(fd, true);
+		}
+
+		// bIgnorePacket = false
+	}
+	if (bPassedChallenge)
+	{
+		if (!bRestartedHandshake)
+		{
+			utcp_on_accept(fd, false);
+		}
+		ResetChallengeData(fd);
+	}
+	return 0;
+}
+
+// StatelessConnectHandlerComponent::NotifyHandshakeBegin
+static void NotifyHandshakeBegin(struct utcp_connection* fd)
+{
+	if (!is_client(fd))
 		return;
 
 	// GetAdjustedSizeBits(fd, HANDSHAKE_PACKET_SIZE_BITS) + 1
@@ -292,8 +336,13 @@ void NotifyHandshakeBegin(struct utcp_connection* fd)
 	fd->challenge_data->LastClientSendTimestamp = utcp_gettime_ms();
 }
 
+void handshake_begin(struct utcp_connection* fd)
+{
+	NotifyHandshakeBegin(fd);
+}
+
 // StatelessConnectHandlerComponent::SendChallengeResponse
-void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE])
+static void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE])
 {
 	// int32_t RestartHandshakeResponseSize = RESTART_RESPONSE_SIZE_BITS;
 	// const int32 BaseSize = GetAdjustedSizeBits(fd->bRestartedHandshake ? RestartHandshakeResponseSize : HANDSHAKE_PACKET_SIZE_BITS);
@@ -332,6 +381,11 @@ void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, doubl
 	memcpy(fd->challenge_data->LastCookie, InCookie, sizeof(fd->AuthorisedCookie));
 }
 
+static void utcp_set_state(struct utcp_connection* fd, enum utcp_challenge_state state)
+{
+	fd->challenge_data->state = state;
+}
+
 // void StatelessConnectHandlerComponent::Incoming(FBitReader& Packet)
 int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
@@ -342,7 +396,6 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	{
 		return -1;
 	}
-
 
 	if (!bHandshakePacket)
 	{
@@ -355,29 +408,29 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	uint8_t Cookie[COOKIE_BYTE_SIZE];
 	uint8_t OrigCookie[COOKIE_BYTE_SIZE];
 
-	bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, fd->mode == Client);
+	bHandshakePacket = ParseHandshakePacket(bitbuf, &bRestartHandshake, &SecretId, &Timestamp, Cookie, OrigCookie, is_client(fd));
 	if (!bHandshakePacket)
 	{
 		return -2;
 	}
 
-	if (fd->mode == Server)
+	if (!is_client(fd))
 	{
 		// TODO
 		// Servers should wipe LastChallengeSuccessAddress shortly after the first non-handshake packet is received by the client,
 		// in order to disable challenge ack resending
 
-			// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
-			// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.
-			SendChallengeAck(NULL, fd, fd->AuthorisedCookie);
-		
+		// The server should not be receiving handshake packets at this stage - resend the ack in case it was lost.
+		// In this codepath, this component is linked to a UNetConnection, and the Last* values below, cache the handshake info.
+		SendChallengeAck(NULL, fd, fd->AuthorisedCookie);
+
 		return 0;
 	}
 
-	if (fd->mode != Client)
+	if (!is_client(fd))
 		return 0;
 
-	if (fd->state == UnInitialized || fd->state == InitializedOnLocal)
+	if (fd->challenge_data->state == UnInitialized || fd->challenge_data->state == InitializedOnLocal)
 	{
 		if (bRestartHandshake)
 		{
@@ -473,7 +526,33 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	return 0;
 }
 
-void utcp_set_state(struct utcp_connection* fd, enum utcp_state state)
+void handshake_update(struct utcp_connection* fd)
 {
-	fd->state = state;
+	int64_t now = utcp_gettime_ms();
+
+	if (is_client(fd))
+	{
+		if (fd->challenge_data->state != Initialized && fd->challenge_data->LastClientSendTimestamp != 0)
+		{
+			int64_t LastSendTimeDiff = now - fd->challenge_data->LastClientSendTimestamp;
+			if (LastSendTimeDiff > 1000)
+			{
+				const bool bRestartChallenge = now - fd->challenge_data->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
+
+				if (bRestartChallenge)
+				{
+					utcp_set_state(fd, UnInitialized);
+				}
+
+				if (fd->challenge_data->state == UnInitialized)
+				{
+					NotifyHandshakeBegin(fd);
+				}
+				else if (fd->challenge_data->state == InitializedOnLocal && fd->challenge_data->LastTimestamp != 0.0)
+				{
+					SendChallengeResponse(fd, fd->challenge_data->LastSecretId, fd->challenge_data->LastTimestamp, fd->challenge_data->LastCookie);
+				}
+			}
+		}
+	}
 }

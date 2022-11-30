@@ -31,7 +31,9 @@ struct utcp_listener* utcp_listener_create()
 void utcp_listener_destroy(struct utcp_listener* fd)
 {
 	if (fd)
+	{
 		utcp_realloc(fd, 0);
+	}
 }
 
 void utcp_listener_init(struct utcp_listener* fd, void* userdata)
@@ -80,58 +82,17 @@ void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secre
 	}
 }
 
-// UIpNetDriver::ProcessConnectionlessPacket
 int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len)
 {
 	utcp_dump("connectionless_incoming", 0, buffer, len);
-
-	struct bitbuf bitbuf;
-	if (!bitbuf_read_init(&bitbuf, buffer, len))
-	{
-		return -1;
-	}
-
-	int ret = IncomingConnectionless(fd, address, &bitbuf);
-	if (ret)
-	{
-		return ret;
-	}
-
-	assert(bitbuf.num == bitbuf.size);
-
-	bool bPassedChallenge = false;
-	bool bRestartedHandshake = false;
-	// bool bIgnorePacket = true;
-
-	bPassedChallenge = HasPassedChallenge(fd, address, &bRestartedHandshake);
-	if (bPassedChallenge)
-	{
-		if (bRestartedHandshake)
-		{
-			utcp_on_accept(fd, true);
-		}
-
-		// bIgnorePacket = false
-	}
-	if (bPassedChallenge)
-	{
-		if (!bRestartedHandshake)
-		{
-			utcp_on_accept(fd, false);
-		}
-		ResetChallengeData(fd);
-	}
-	return 0;
+	return process_connectionless_packet(fd, address, buffer, len);
 }
 
 void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
 	if (!reconnect)
 	{
-		assert(conn->mode == ModeUnInitialized);
 		assert(conn->challenge_data == NULL);
-		conn->mode = Server;
-
 		memcpy(conn->AuthorisedCookie, listener->AuthorisedCookie, sizeof(conn->AuthorisedCookie));
 		utcp_sequence_init(conn, listener->LastClientSequence, listener->LastServerSequence);
 	}
@@ -169,15 +130,12 @@ void utcp_uninit(struct utcp_connection* fd)
 
 void utcp_connect(struct utcp_connection* fd)
 {
-	assert(fd->mode == ModeUnInitialized);
-	fd->mode = Client;
-
 	assert(!fd->challenge_data);
 	fd->challenge_data = (struct utcp_challenge_data*)utcp_realloc(NULL, sizeof(*fd->challenge_data));
 	memset(fd->challenge_data, 0, sizeof(sizeof(*fd->challenge_data)));
 	fd->challenge_data->bBeganHandshaking = true;
 
-	NotifyHandshakeBegin(fd);
+	handshake_begin(fd);
 }
 
 // UNetConnection::ReceivedRawPacket
@@ -196,7 +154,7 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 	int ret = handshake_incoming(fd, &bitbuf);
 	if (ret != 0)
 	{
-		if (fd->mode != Server)
+		if (!is_client(fd))
 			utcp_log(Warning, "[conn:%p]handshake_incoming failed, ret=%d", ret);
 		utcp_mark_close(fd, PacketHandlerIncomingError);
 		return false;
@@ -221,36 +179,11 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 
 int utcp_update(struct utcp_connection* fd)
 {
-	int64_t now = utcp_gettime_ms();
+	handshake_update(fd);
 
-	if (fd->mode == Client)
+	if (is_connected(fd))
 	{
-		if (fd->state != Initialized && fd->challenge_data->LastClientSendTimestamp != 0)
-		{
-			int64_t LastSendTimeDiff = now - fd->challenge_data->LastClientSendTimestamp;
-			if (LastSendTimeDiff > 1000)
-			{
-				const bool bRestartChallenge = now - fd->challenge_data->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
-
-				if (bRestartChallenge)
-				{
-					utcp_set_state(fd, UnInitialized);
-				}
-
-				if (fd->state == UnInitialized)
-				{
-					NotifyHandshakeBegin(fd);
-				}
-				else if (fd->state == InitializedOnLocal && fd->challenge_data->LastTimestamp != 0.0)
-				{
-					SendChallengeResponse(fd, fd->challenge_data->LastSecretId, fd->challenge_data->LastTimestamp, fd->challenge_data->LastCookie);
-				}
-			}
-		}
-	}
-
-	if (fd->mode == Server || (fd->mode == Client && fd->state == Initialized))
-	{
+		int64_t now = utcp_gettime_ms();
 		if (now - fd->LastReceiveRealtime > UTCP_CONNECT_TIMEOUT)
 		{
 			utcp_mark_close(fd, ConnectionTimeout);
@@ -299,7 +232,7 @@ int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 // UNetConnection::FlushNet
 int utcp_send_flush(struct utcp_connection* fd)
 {
-	if (fd->mode == Client && fd->state != Initialized)
+	if (!is_connected(fd))
 		return 0;
 
 	int64_t now = utcp_gettime_ms();

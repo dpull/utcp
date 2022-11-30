@@ -5,12 +5,20 @@
 #include "bit_buffer.h"
 #include "utcp_def_internal.h"
 
-int IncomingConnectionless(struct utcp_listener* fd, const char* address, struct bitbuf* bitbuf);
-bool HasPassedChallenge(struct utcp_listener* fd, const char* address, bool* bOutRestartedHandshake);
-void ResetChallengeData(struct utcp_listener* fd);
+// The design of handshake: https://blog.dpull.com/post/2022-11-13-utcp_handshake
 
-void NotifyHandshakeBegin(struct utcp_connection* fd);
-void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId, double InTimestamp, uint8_t InCookie[COOKIE_BYTE_SIZE]);
+int process_connectionless_packet(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len);
+
+void handshake_begin(struct utcp_connection* fd);
 int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf);
-void utcp_set_state(struct utcp_connection* fd, enum utcp_state state);
+void handshake_update(struct utcp_connection* fd);
 
+static inline bool is_client(struct utcp_connection* fd)
+{
+	return fd->challenge_data != NULL;
+}
+
+static inline bool is_connected(struct utcp_connection* fd)
+{
+	return !is_client(fd) || (is_client(fd) && fd->challenge_data->state == Initialized);
+}
