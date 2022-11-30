@@ -59,7 +59,10 @@ static inline void mark_channel_close(struct utcp_channel* utcp_channel, int8_t 
 static inline void opened_channels_uninit(struct utcp_opened_channels* utcp_open_channels)
 {
 	if (utcp_open_channels->channels)
+	{
 		utcp_realloc(utcp_open_channels->channels, 0);
+		utcp_open_channels->channels = NULL;
+	}
 }
 
 static inline int binary_search(const void* key, const void* base, size_t num, size_t element_size, int (*compar)(const void*, const void*))

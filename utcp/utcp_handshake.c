@@ -381,7 +381,8 @@ static void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId
 	memcpy(fd->challenge_data->LastCookie, InCookie, sizeof(fd->AuthorisedCookie));
 }
 
-static void utcp_set_state(struct utcp_connection* fd, enum utcp_challenge_state state)
+// HandlerComponent::SetState
+static void SetState(struct utcp_connection* fd, enum utcp_challenge_state state)
 {
 	fd->challenge_data->state = state;
 }
@@ -427,9 +428,6 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		return 0;
 	}
 
-	if (!is_client(fd))
-		return 0;
-
 	if (fd->challenge_data->state == UnInitialized || fd->challenge_data->state == InitializedOnLocal)
 	{
 		if (bRestartHandshake)
@@ -444,7 +442,7 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 			SendChallengeResponse(fd, SecretId, Timestamp, Cookie);
 
 			// Utilize this state as an intermediary, indicating that the challenge response has been sent
-			utcp_set_state(fd, InitializedOnLocal);
+			SetState(fd, InitializedOnLocal);
 		}
 		// Receiving challenge ack, verify the timestamp is < 0.0f
 		else if (Timestamp < 0.0)
@@ -462,7 +460,7 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 			}
 
 			// Now finish initializing the handler - flushing the queued packet buffer in the process.
-			utcp_set_state(fd, Initialized);
+			SetState(fd, Initialized);
 			utcp_on_connect(fd, fd->challenge_data->bRestartedHandshake);
 			fd->challenge_data->bRestartedHandshake = false;
 		}
@@ -470,7 +468,7 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	else if (bRestartHandshake)
 	{
 		uint8_t ZeroCookie[COOKIE_BYTE_SIZE] = {0};
-		bool bValidAuthCookie = memcpy(fd->AuthorisedCookie, ZeroCookie, COOKIE_BYTE_SIZE) != 0;
+		bool bValidAuthCookie = memcmp(fd->AuthorisedCookie, ZeroCookie, COOKIE_BYTE_SIZE) != 0;
 
 		// The server has requested us to restart the handshake process - this is because
 		// it has received traffic from us on a different address than before.
@@ -501,7 +499,7 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 				// UE_LOG(LogHandshake, Log, TEXT("Beginning restart handshake process."));
 
 				fd->challenge_data->bRestartedHandshake = true;
-				utcp_set_state(fd, UnInitialized);
+				SetState(fd, UnInitialized);
 				NotifyHandshakeBegin(fd);
 			}
 			else
@@ -526,33 +524,33 @@ int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	return 0;
 }
 
+// StatelessConnectHandlerComponent::Tick
 void handshake_update(struct utcp_connection* fd)
 {
-	int64_t now = utcp_gettime_ms();
-
-	if (is_client(fd))
+	if (fd->challenge_data == NULL || fd->challenge_data->LastClientSendTimestamp == 0)
 	{
-		if (fd->challenge_data->state != Initialized && fd->challenge_data->LastClientSendTimestamp != 0)
-		{
-			int64_t LastSendTimeDiff = now - fd->challenge_data->LastClientSendTimestamp;
-			if (LastSendTimeDiff > 1000)
-			{
-				const bool bRestartChallenge = now - fd->challenge_data->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
+		return;
+	}
 
-				if (bRestartChallenge)
-				{
-					utcp_set_state(fd, UnInitialized);
-				}
+	int64_t now = utcp_gettime_ms();
+	int64_t LastSendTimeDiff = now - fd->challenge_data->LastClientSendTimestamp;
+	if (LastSendTimeDiff < 1000)
+	{
+		return;
+	}
 
-				if (fd->challenge_data->state == UnInitialized)
-				{
-					NotifyHandshakeBegin(fd);
-				}
-				else if (fd->challenge_data->state == InitializedOnLocal && fd->challenge_data->LastTimestamp != 0.0)
-				{
-					SendChallengeResponse(fd, fd->challenge_data->LastSecretId, fd->challenge_data->LastTimestamp, fd->challenge_data->LastCookie);
-				}
-			}
-		}
+	const bool bRestartChallenge = now - fd->challenge_data->LastChallengeTimestamp > MIN_COOKIE_LIFETIME * 1000;
+	if (bRestartChallenge)
+	{
+		SetState(fd, UnInitialized);
+	}
+
+	if (fd->challenge_data->state == UnInitialized)
+	{
+		NotifyHandshakeBegin(fd);
+	}
+	else if (fd->challenge_data->state == InitializedOnLocal && fd->challenge_data->LastTimestamp != 0.0)
+	{
+		SendChallengeResponse(fd, fd->challenge_data->LastSecretId, fd->challenge_data->LastTimestamp, fd->challenge_data->LastCookie);
 	}
 }
