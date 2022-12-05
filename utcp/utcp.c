@@ -179,8 +179,6 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 
 int utcp_update(struct utcp_connection* fd)
 {
-	handshake_update(fd);
-
 	if (is_connected(fd))
 	{
 		int64_t now = utcp_gettime_ms();
@@ -188,6 +186,10 @@ int utcp_update(struct utcp_connection* fd)
 		{
 			utcp_mark_close(fd, ConnectionTimeout);
 		}
+	}
+	else
+	{
+		handshake_update(fd);
 	}
 
 	utcp_delay_close_channel(&fd->channels);

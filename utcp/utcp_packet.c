@@ -532,8 +532,8 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 }
 
 // UNetConnection::WriteBitsToSendBuffer
-int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len)
+int WriteBitsToSendBuffer(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits)
 {
-	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
-	return WriteBitsToSendBufferInternal(fd, NULL, 0, (uint8_t*)buffer, bits_len);
+	PrepareWriteBitsToSendBuffer(fd, 0, SizeInBits);
+	return WriteBitsToSendBufferInternal(fd, NULL, 0, Bits, SizeInBits);
 }
