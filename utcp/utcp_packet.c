@@ -326,7 +326,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	return true;
 }
 
-int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
+int32_t PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_read_header(bitbuf, &notification_header);
@@ -406,7 +406,7 @@ void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 }
 
 // void UNetConnection::PrepareWriteBitsToSendBuffer
-void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
+static void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
 {
 	const int32_t TotalSizeInBits = SizeInBits + ExtraSizeInBits;
 
@@ -437,7 +437,7 @@ void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t Size
 }
 
 // UNetConnection::WriteBitsToSendBufferInternal
-int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
+static int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
 {
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));

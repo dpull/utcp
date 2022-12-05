@@ -7,7 +7,7 @@
 
 void utcp_sequence_init(struct utcp_connection* fd, int32_t IncomingSequence, int32_t OutgoingSequence);
 bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf);
-int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf);
+int32_t PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf);
 int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len);
 void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf);
 int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch);
