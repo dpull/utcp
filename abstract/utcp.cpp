@@ -262,6 +262,22 @@ void conn::flush_packet_order_cache(bool forced_flush)
 		_packet_order_cache.pop();
 	}
 }
+void conn::set_debug_name(const char* debug_name)
+{
+	if (debug_name)
+	{
+		strncpy(_utcp_fd->debug_name, debug_name, sizeof (_utcp_fd->debug_name));
+		_utcp_fd->debug_name[sizeof (_utcp_fd->debug_name)-1] = '\0';
+	}
+	else
+	{
+		_utcp_fd->debug_name[0] = '\0';
+	}
+}
+const char* conn::debug_name()
+{
+	return _utcp_fd->debug_name;
+}
 void bufconn::update()
 {
 	try_send();

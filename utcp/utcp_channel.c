@@ -301,18 +301,18 @@ struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channe
 			utcp_channel = alloc_utcp_channel(utcp_channels->InitInReliable, utcp_channels->InitOutReliable);
 			utcp_channels->Channels[utcp_bunch->ChIndex] = utcp_channel;
 			opened_channels_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
+
+			utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
 		}
 		else
 		{
 			assert(false);
 			utcp_log(Warning, "utcp_get_channel failed");
 		}
-
-		utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
 	}
 	if (utcp_bunch->bClose && utcp_channel)
 	{
-		mark_channel_close(utcp_channel, utcp_bunch->CloseReason);
+		mark_channel_close(utcp_channel, utcp_bunch->bDormant);
 		utcp_channels->bHasChannelClose = true;
 	}
 	return utcp_channel;
@@ -348,7 +348,7 @@ void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacket
 		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 		for (int i = 0; i < count; ++i)
 		{
-			int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+			int32_t packet_id = WriteBitsToSendBuffer(fd, utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len, NULL, 0);
 			utcp_bunch_node[i]->packet_id = packet_id;
 			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
 

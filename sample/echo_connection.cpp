@@ -3,11 +3,12 @@
 #include <cassert>
 #include <cstring>
 
-void echo_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len)
+void echo_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len, bool has_watermark)
 {
 	memcpy(&socket.dest_addr, addr, addr_len);
 	socket.dest_addr_len = addr_len;
 	socket.socket_fd = fd;
+	set_debug_name("server");
 }
 
 bool echo_connection::async_connnect(const char* ip, int port)
@@ -16,13 +17,14 @@ bool echo_connection::async_connnect(const char* ip, int port)
 		return false;
 
 	connect();
+	set_debug_name("client");
 	return true;
 }
 
 void echo_connection::send(int num)
 {
 	utcp::large_bunch bunch((uint8_t*)&num, sizeof(num) * 8);
-	bunch.NameIndex = 255;
+	bunch.ChType = 2;
 	bunch.ChIndex = 0;
 	bunch.bOpen = 1;
 	bunch.bReliable = 1;
@@ -31,7 +33,7 @@ void echo_connection::send(int num)
 	bunch.bPartialInitial = 1;
 
 	auto ret = send_bunch(&bunch);
-	log(log_level::Log, "[snd]\t[%p]\t%d\t%d", this, ret.first, num);
+	log(log_level::Log, "[%s]send%d\t%d", this->debug_name(), ret.first, num);
 	send_flush();
 	
 	bunch.bPartialInitial = 0;
@@ -63,7 +65,7 @@ void echo_connection::on_outgoing(const void* data, int len)
 	int loss = rand() % 100;
 	if (g_config->outgoing_loss > 0 && loss < g_config->outgoing_loss)
 	{
-		log(log_level::Log, "[out]\t[%p]\tloss", this);
+		log(log_level::Log, "[%s]out loss", this->debug_name());
 		return;
 	}
 
@@ -83,7 +85,7 @@ void echo_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int coun
 
 void echo_connection::on_delivery_status(int32_t packet_id, bool ack)
 {
-	log(log_level::Log, "[sts]\t[%p]\t%d\t%s", this, packet_id, ack ? "ACK" : "NAK");
+	log(log_level::Log, "[%s]delivery %d %s", this->debug_name(), packet_id, ack ? "ACK" : "NAK");
 }
 
 void echo_connection::proc_recv_queue()

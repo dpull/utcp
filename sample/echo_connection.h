@@ -8,7 +8,7 @@
 class echo_connection : public utcp::conn
 {
   public:
-	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len);
+	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len, bool has_watermark);
 	bool async_connnect(const char* ip, int port);
 	void send(int num);
 

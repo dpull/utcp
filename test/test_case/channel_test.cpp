@@ -147,7 +147,7 @@ TEST(channel, partial_reliable)
 		ASSERT_FALSE(bOutSkipAck);
 	}
 
-	struct utcp_bunch* handle_bunches[MaxSequenceHistoryLength];
+	struct utcp_bunch* handle_bunches[UTCP_MAX_PARTIAL_BUNCH_COUNT];
 	ASSERT_EQ(get_partial_bunch(&channel, handle_bunches, (int)std::size(handle_bunches)), 4);
 
 	reset_nodes(nodes, std::size(nodes));
@@ -236,7 +236,7 @@ TEST(channel, partial_unreliable)
 		ASSERT_FALSE(bOutSkipAck);
 	}
 
-	struct utcp_bunch* handle_bunches[MaxSequenceHistoryLength];
+	struct utcp_bunch* handle_bunches[UTCP_MAX_PARTIAL_BUNCH_COUNT];
 	ASSERT_EQ(get_partial_bunch(&channel, handle_bunches, (int)std::size(handle_bunches)), std::size(nodes));
 
 	for (int i = 0; i < std::size(nodes); ++i)

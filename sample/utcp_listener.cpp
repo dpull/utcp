@@ -1,4 +1,5 @@
 ﻿#include "utcp_listener.h"
+#include "sample_config.h"
 #include <cassert>
 #include <cstring>
 
@@ -48,6 +49,17 @@ void udp_utcp_listener::post_tick()
 	}
 }
 
+void udp_utcp_listener::incoming(const char* address, uint8_t* data, int count)
+{
+	has_watermark = (count == 33);
+	if (has_watermark)
+	{
+		data += 8;
+		count -= 8;
+	}
+	utcp::listener::incoming(address, data, count);
+}
+
 void udp_utcp_listener::on_accept(bool reconnect)
 {
 	utcp::conn* conn = nullptr;
@@ -80,7 +92,17 @@ void udp_utcp_listener::on_accept(bool reconnect)
 void udp_utcp_listener::on_outgoing(const void* data, int len)
 {
 	assert(socket.dest_addr_len > 0);
-	sendto(socket.socket_fd, (const char*)data, len, 0, (sockaddr*)&socket.dest_addr, socket.dest_addr_len);
+	if (g_config->is_gp)
+	{
+		char real_send_buffer[UDP_MTU_SIZE];
+		real_send_buffer[0] = 0;
+		memcpy(real_send_buffer + 1, data, len);
+		sendto(socket.socket_fd, real_send_buffer, len + 1, 0, (sockaddr*)&socket.dest_addr, socket.dest_addr_len);
+	}
+	else
+	{
+		sendto(socket.socket_fd, (const char*)data, len, 0, (sockaddr*)&socket.dest_addr, socket.dest_addr_len);
+	}
 }
 
 void udp_utcp_listener::proc_recv_queue()

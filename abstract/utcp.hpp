@@ -14,7 +14,7 @@ constexpr int32_t NetMaxConstructedPartialBunchSizeBytes = 1024 * 64;
 constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BITS = 7265; // Connection->GetMaxSingleBunchSizeBits();
 constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BYTES = MAX_SINGLE_BUNCH_SIZE_BITS / 8;
 constexpr int32_t MAX_PARTIAL_BUNCH_SIZE_BITS = MAX_SINGLE_BUNCH_SIZE_BYTES * 8;
-static_assert(UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES);
+static_assert(UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES, "UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES");
 
 inline size_t bits2bytes(size_t bits_len)
 {
@@ -119,6 +119,8 @@ class conn : public event_handler
 
 	utcp_connection* get_fd();
 	bool is_closed();
+	void set_debug_name(const char* debug_name);
+	const char* debug_name();
 
   protected:
 	void flush_packet_order_cache(bool forced_flush);

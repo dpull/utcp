@@ -11,6 +11,13 @@
 extern "C" {
 #endif
 
+#define UTCP_MAX_PACKETID 16384 // MAX_PACKETID
+#define UTCP_CHTYPE_MAX 8 // CHTYPE_MAX
+#define UTCP_MAX_PACKET 512 // UNetConnection::MaxPacket
+#define UTCP_MAX_CHANNELS (20480 / 2) // MAX_CHANNELS or UNetConnection::GetMaxChannelsNum
+#define UTCP_RELIABLE_BUFFER 1024 // RELIABLE_BUFFER
+#define UTCP_MAX_CHSEQUENCE 4096 // MAX_CHSEQUENCE
+
 struct utcp_listener;
 struct utcp_connection;
 struct utcp_bunch;
@@ -27,8 +34,6 @@ struct utcp_config
 	void* (*on_realloc)(void* ptr, size_t size);
 
 	int64_t ElapsedTime;
-	uint32_t MagicHeader;
-	uint8_t MagicHeaderBits;
 	uint8_t EnableDump;
 };
 
@@ -51,15 +56,15 @@ struct utcp_bunch
 {
 	int32_t ChSequence; // 内部赋值
 
-	uint32_t NameIndex;
 	uint16_t ChIndex;
 	uint16_t DataBitsLen;
 
 	uint8_t bOpen : 1;
 	uint8_t bClose : 1;
-	uint8_t CloseReason : 4;
+	uint8_t bDormant : 1;
 	uint8_t bIsReplicationPaused : 1;
 	uint8_t bReliable : 1;
+	uint8_t ChType : 3;
 
 	uint8_t bHasPackageMapExports : 1;
 	uint8_t bHasMustBeMappedGUIDs : 1;

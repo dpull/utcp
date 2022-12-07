@@ -103,7 +103,7 @@ static bool opened_channels_resize(struct utcp_opened_channels* utcp_open_channe
 
 	cap = cap != 0 ? cap : 16;
 	cap *= 2;
-	assert(cap > 0 && cap < DEFAULT_MAX_CHANNEL_SIZE * 2);
+	assert(cap > 0 && cap < UTCP_MAX_CHANNELS * 2);
 
 	uint16_t* channels = (uint16_t*)utcp_realloc(utcp_open_channels->channels, cap * sizeof(uint16_t));
 	if (!channels)

@@ -8,23 +8,24 @@
 
 #include "utcp_channel_def.h"
 #include "utcp_def.h"
-#include "utcp_packet_notify_def.h"
 
 enum
 {
 	PACKET_ID_INDEX_NONE = -1,
-	HANDSHAKE_PACKET_SIZE_BITS = 227,
-	RESTART_HANDSHAKE_PACKET_SIZE_BITS = 2,
-	RESTART_RESPONSE_SIZE_BITS = 387,
+	HANDSHAKE_PACKET_SIZE_BITS = 194,
 	SECRET_BYTE_SIZE = 64,
 	SECRET_COUNT = 2,
 	COOKIE_BYTE_SIZE = 20,
 	ADDRSTR_PORT_SIZE = 64, // INET6_ADDRSTRLEN + PORT_LEN
+	MAX_ACKS_CACHE = 1024,
+	UTCP_MAX_PARTIAL_BUNCH_COUNT = 512, // 64 * 1024 / 500
+	DEBUG_NAME_MAX_SIZE = 32,
 };
 
 #define SECRET_UPDATE_TIME 15.f
 #define SECRET_UPDATE_TIME_VARIANCE 5.f
 #define UTCP_CONNECT_TIMEOUT (120 * 1000)
+#define UTCP_KEEP_ALIVE_TIME (int)(0.2 * 1000)
 
 // The maximum allowed lifetime (in seconds) of any one handshake cookie
 #define MAX_COOKIE_LIFETIME ((SECRET_UPDATE_TIME + SECRET_UPDATE_TIME_VARIANCE) * (float)SECRET_COUNT)
@@ -46,7 +47,7 @@ struct utcp_listener
 	uint8_t ActiveSecret;
 
 	/** The time of the last secret value update */
-	double LastSecretUpdateTimestamp;
+	float LastSecretUpdateTimestamp;
 
 	/** The local (client) time at which the challenge was last updated */
 	int64_t LastChallengeTimestamp;
@@ -80,9 +81,6 @@ struct utcp_challenge_data
 	/** Whether or not component handshaking has begun */
 	uint8_t bBeganHandshaking : 1;
 
-	/** Client: Whether or not we are in the middle of a restarted handshake. Server: Whether or not the last handshake was a restarted handshake. */
-	uint8_t bRestartedHandshake : 1;
-
 	/** The local (client) time at which the challenge was last updated */
 	int64_t LastChallengeTimestamp;
 
@@ -90,7 +88,7 @@ struct utcp_challenge_data
 	int64_t LastClientSendTimestamp;
 
 	/** The Timestamp value of the last challenge response sent */
-	double LastTimestamp;
+	float LastTimestamp;
 
 	/** The SecretId value of the last challenge response sent */
 	uint8_t LastSecretId;
@@ -105,6 +103,7 @@ struct utcp_challenge_data
 struct utcp_connection
 {
 	void* userdata;
+	char debug_name[DEBUG_NAME_MAX_SIZE];
 
 	uint8_t bClose : 1;
 	uint8_t CloseReason : 7;
@@ -124,12 +123,14 @@ struct utcp_connection
 	 * tha last successfully delivered PacketId */
 	int32_t LastNotifiedPacketId;
 
-	struct packet_notify packet_notify;
+	int32_t QueuedAcks[MAX_ACKS_CACHE];
+	int32_t ResendAcks[MAX_ACKS_CACHE];
+	int16_t QueuedAcksCount;
+	int16_t ResendAcksCount;
+
+	//struct packet_notify packet_notify;
 
 	struct utcp_channels channels;
-
-	/** Keep old behavior where we send a packet with only acks even if we have no other outgoing data if we got incoming data */
-	uint32_t HasDirtyAcks; // TODO 这个变量究竟做什么
 
 	uint8_t SendBuffer[UTCP_MAX_PACKET + 32 /*MagicHeader*/ + 1 /*EndBits*/];
 	size_t SendBufferBitsNum;

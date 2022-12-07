@@ -1,39 +1,71 @@
-﻿// Copyright DPULL, Inc. All Rights Reserved.
+// Copyright DPULL, Inc. All Rights Reserved.
 
 #pragma once
-
 #include "bit_buffer.h"
 #include "utcp_def_internal.h"
-#include "utcp_packet_notify_def.h"
-#include <stdbool.h>
+#include "utcp_utils.h"
 #include <stdint.h>
+#include <string.h>
 
-enum
+struct ack_data
 {
-	NumBitsForJitterClockTimeInHeader = 10,
-};
-
-struct packet_header
-{
-	struct notification_header notification_header;
-
-	uint8_t bHasPacketInfoPayload;
-	uint32_t PacketJitterClockTimeMS;
+	int32_t AckPacketId;
 	uint8_t bHasServerFrameTime;
 	uint8_t FrameTimeByte;
+	uint32_t InKBytesPerSecond;
 };
 
-void packet_notify_init(struct packet_notify* packet_notify, uint16_t InitialInSeq, uint16_t InitialOutSeq);
+// UNetConnection::ReceivedPacket
+static inline int ack_data_read(struct bitbuf* bitbuf, struct ack_data* ack_data)
+{
+	memset(ack_data, 0, sizeof(*ack_data));
 
-int packet_notify_read_header(struct bitbuf* bitbuf, struct notification_header* notification_header);
-int32_t packet_notify_delta_seq(struct packet_notify* packet_notify, struct notification_header* notification_header);
+	// This is an acknowledgment.
+	if (!bitbuf_read_int(bitbuf, (uint32_t*)&ack_data->AckPacketId, UTCP_MAX_PACKETID))
+	{
+		return AckSequenceMismatch;
+	}
 
-typedef void (*handle_notify_fn)(void* fd, uint16_t AckedSequence, bool bDelivered);
-int32_t packet_notify_update(handle_notify_fn handle, void* fd, struct packet_notify* packet_notify, struct notification_header* notification_header);
+	if (!bitbuf_read_bit(bitbuf, &ack_data->bHasServerFrameTime))
+	{
+		utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 1);
+		return ReadHeaderExtraFail;
+	}
 
-void packet_notify_ack_seq(struct packet_notify* packet_notify, uint16_t AckedSeq, bool IsAck);
-uint16_t packet_notify_commit_and_inc_outseq(struct packet_notify* packet_notify);
-bool packet_notify_fill_notification_header(struct packet_notify* packet_notify, struct notification_header* notification_header, bool bRefresh);
+	if (ack_data->bHasServerFrameTime)
+	{
+		if (!bitbuf_read_bytes(bitbuf, &ack_data->FrameTimeByte, 1))
+		{
+			utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 2);
+			return ReadHeaderExtraFail;
+		}
+	}
 
-int packet_header_read(struct packet_header* packet_header, struct bitbuf* bitbuf);
-bool packet_header_write(struct packet_header* packet_header, struct bitbuf* bitbuf);
+	if (!bitbuf_read_int_packed(bitbuf, &ack_data->InKBytesPerSecond))
+	{
+		utcp_log(Warning, "Failed to read extra PacketHeader information.%d", 3);
+		return ReadHeaderExtraFail;
+	}
+
+	return 0;
+}
+
+// UNetConnection::SendAck
+static inline int ack_data_write(struct bitbuf* bitbuf, struct ack_data* ack_data)
+{
+	if (!bitbuf_write_int(bitbuf, ack_data->AckPacketId, UTCP_MAX_PACKETID))
+		return -1;
+
+	if (!bitbuf_write_bit(bitbuf, ack_data->bHasServerFrameTime))
+		return -2;
+
+	if (ack_data->bHasServerFrameTime)
+	{
+		if (!bitbuf_write_bytes(bitbuf, &ack_data->FrameTimeByte, 1))
+			return -3;
+	}
+
+	if (!bitbuf_write_int_packed(bitbuf, ack_data->InKBytesPerSecond))
+		return -4;
+	return 0;
+}

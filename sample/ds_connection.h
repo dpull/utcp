@@ -25,7 +25,8 @@ struct ue_codec
 class ds_connection : public utcp::conn
 {
   public:
-	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len);
+	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len, bool has_watermark);
+	virtual void incoming(uint8_t* data, int count) override;
 
   protected:
 	virtual void on_disconnect(int close_reason) override;
@@ -46,4 +47,5 @@ class ds_connection : public utcp::conn
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_addr_len = 0;
 	uint8_t send_buffer[UDP_MTU_SIZE];
+	bool has_watermark = false;
 };

@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 #include <memory>
 
-static uint8_t handshake_step1[] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8};
+static uint8_t handshake_step1[] = {0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4};
 static std::vector<uint8_t> last_send;
 static bool new_conn;
 
@@ -40,7 +40,7 @@ TEST_F(handshake, accept)
 
 	int ret = utcp_listener_incoming(fd.get(), "127.0.0.1:12345", handshake_step1, sizeof(handshake_step1));
 	ASSERT_EQ(ret, 0);
-	ASSERT_EQ(last_send.size(), 29);
+	ASSERT_EQ(last_send.size(), 25);
 	ASSERT_FALSE(new_conn);
 
 	utcp_add_elapsed_time(10 * 1000 * 1000);
@@ -49,7 +49,7 @@ TEST_F(handshake, accept)
 	last_send.clear();
 	ret = utcp_listener_incoming(fd.get(), "127.0.0.1:12345", send2.data(), (int)send2.size());
 	ASSERT_EQ(ret, 0);
-	ASSERT_EQ(last_send.size(), 29);
+	ASSERT_EQ(last_send.size(), 25);
 	ASSERT_TRUE(new_conn);
 }
 
@@ -59,4 +59,8 @@ TEST_F(handshake, client)
 	utcp_connect(fd.get());
 	ASSERT_EQ(last_send.size(), sizeof(handshake_step1));
 	ASSERT_EQ(memcmp(handshake_step1, last_send.data(), last_send.size()), 0);
+
+	uint8_t challenge[] = {0x61, 0x1F, 0x15, 0xFE, 0x18, 0x91, 0x8C, 0x75, 0xD, 0x18, 0x21, 0x7A, 0xFF,
+						   0x87, 0x7,  0x77, 0x6,  0x69, 0x4B, 0xC2, 0xEA, 0x3, 0x8,  0xEA, 0x5};
+	utcp_incoming(fd.get(), challenge, sizeof(challenge));
 }

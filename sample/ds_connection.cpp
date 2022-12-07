@@ -64,11 +64,29 @@ ue_codec& ue_codec::operator>>(std::string& value)
 	return *this;
 }
 
-void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len)
+void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len, bool has_watermark)
 {
+	this->has_watermark = has_watermark;
 	memcpy(&dest_addr, addr, addr_len);
 	dest_addr_len = addr_len;
 	socket_fd = fd;
+	set_debug_name("server");
+}
+
+void ds_connection::incoming(uint8_t* data, int count)
+{
+	if (has_watermark)
+	{
+		data += 8;
+		count -= 8;
+	}
+	if (g_config->is_gp)
+	{
+		// FIpConnectionID
+		data += 4;
+		count -= 4;
+	}
+	utcp::conn::incoming(data, count);
 }
 
 void ds_connection::on_disconnect(int close_reason)
@@ -78,7 +96,17 @@ void ds_connection::on_disconnect(int close_reason)
 void ds_connection::on_outgoing(const void* data, int len)
 {
 	assert(dest_addr_len > 0);
-	sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
+	if (g_config->is_gp)
+	{
+		char real_send_buffer[UDP_MTU_SIZE];
+		real_send_buffer[0] = 0;
+		memcpy(real_send_buffer + 1, data, len);
+		sendto(socket_fd, real_send_buffer, len + 1, 0, (sockaddr*)&dest_addr, dest_addr_len);
+	}
+	else
+	{
+		sendto(socket_fd, (const char*)data, len, 0, (sockaddr*)&dest_addr, dest_addr_len);
+	}
 }
 
 void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
@@ -95,6 +123,8 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 
 	uint8_t msg_type;
 	codec >> msg_type;
+
+	log(log_level::Verbose, "on_recv msg_type=%hhd\n", msg_type);
 	switch (msg_type)
 	{
 	case 0:
@@ -109,7 +139,7 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 		break;
 
 	default:
-		log(log_level::Verbose, "on_recv msg_type=%hhd\n", msg_type);
+		log(log_level::Warning, "on_recv unknown msg_type=%hhd\n", msg_type);
 	}
 }
 
@@ -122,7 +152,7 @@ void ds_connection::send_data()
 {
 	auto len = uint16_t(codec.pos - send_buffer);
 	utcp::large_bunch bunch(send_buffer, len);
-	bunch.NameIndex = 255;
+	bunch.ChType = 2;
 	bunch.ChIndex = 0;
 	bunch.bReliable = 1;
 	bunch.ExtDataBitsLen = 0;

@@ -1,7 +1,5 @@
 ﻿#include "utcp_bunch.h"
 #include "bit_buffer.h"
-#include "utcp_def_internal.h"
-#include <assert.h>
 #include <string.h>
 
 #define BITBUF_READ_BIT(VAR)                                                                                                                                                       \
@@ -20,11 +18,6 @@
 			return false;                                                                                                                                                          \
 	} while (0);
 
-enum
-{
-	EChannelCloseReasonMAX = 15
-};
-
 // UNetConnection::ReceivedPacket
 bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 {
@@ -39,21 +32,18 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 		BITBUF_READ_BIT(utcp_bunch->bClose);
 	}
 
-	utcp_bunch->CloseReason = 0;
 	if (utcp_bunch->bClose)
 	{
-		uint32_t CloseReason;
-		if (!bitbuf_read_int(bitbuf, &CloseReason, EChannelCloseReasonMAX))
-			return false;
-		utcp_bunch->CloseReason = CloseReason;
+		BITBUF_READ_BIT(utcp_bunch->bDormant);
 	}
 	BITBUF_READ_BIT(utcp_bunch->bIsReplicationPaused);
 	BITBUF_READ_BIT(utcp_bunch->bReliable);
 
 	uint32_t ChIndex;
-	if (!bitbuf_read_int_packed(bitbuf, &ChIndex))
+	if (!bitbuf_read_int(bitbuf, &ChIndex, UTCP_MAX_CHANNELS))
+	{
 		return false;
-
+	}
 	utcp_bunch->ChIndex = ChIndex;
 
 	BITBUF_READ_BIT(utcp_bunch->bHasPackageMapExports);
@@ -70,8 +60,6 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 		}
 	}
 
-	utcp_bunch->bPartialInitial = 0;
-	utcp_bunch->bPartialFinal = 0;
 	if (utcp_bunch->bPartial)
 	{
 		BITBUF_READ_BIT(utcp_bunch->bPartialInitial);
@@ -80,19 +68,10 @@ bool utcp_bunch_read(struct utcp_bunch* utcp_bunch, struct bitbuf* bitbuf)
 
 	if (utcp_bunch->bReliable || utcp_bunch->bOpen)
 	{
-		uint8_t bHardcoded;
-		BITBUF_READ_BIT(bHardcoded);
-		if (!bHardcoded)
-		{
-			// TODO 暂时不支持
-			assert(false);
+		uint32_t ChType = 0;
+		if (!bitbuf_read_int(bitbuf, &ChType, UTCP_CHTYPE_MAX))
 			return false;
-		}
-
-		uint32_t NameIndex = 0;
-		if (!bitbuf_read_int_packed(bitbuf, &NameIndex))
-			return false;
-		utcp_bunch->NameIndex = NameIndex;
+		utcp_bunch->ChType = ChType;
 	}
 
 	uint32_t BunchDataBits;
@@ -118,15 +97,14 @@ bool utcp_bunch_write_header(const struct utcp_bunch* utcp_bunch, struct bitbuf*
 
 		if (utcp_bunch->bClose)
 		{
-			if (!bitbuf_write_int(bitbuf, utcp_bunch->CloseReason, EChannelCloseReasonMAX))
-				return false;
+			BITBUF_WRITE_BIT(utcp_bunch->bDormant);
 		}
 	}
 
 	BITBUF_WRITE_BIT(utcp_bunch->bIsReplicationPaused);
 	BITBUF_WRITE_BIT(utcp_bunch->bReliable);
 
-	if (!bitbuf_write_int_packed(bitbuf, utcp_bunch->ChIndex))
+	if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->ChIndex, UTCP_MAX_CHANNELS))
 		return false;
 
 	BITBUF_WRITE_BIT(utcp_bunch->bHasPackageMapExports);
@@ -147,8 +125,7 @@ bool utcp_bunch_write_header(const struct utcp_bunch* utcp_bunch, struct bitbuf*
 
 	if (bIsOpenOrReliable)
 	{
-		BITBUF_WRITE_BIT(1);
-		if (!bitbuf_write_int_packed(bitbuf, utcp_bunch->NameIndex))
+		if (!bitbuf_write_int_wrapped(bitbuf, utcp_bunch->ChType, UTCP_CHTYPE_MAX))
 			return false;
 	}
 

@@ -7,9 +7,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define UTCP_MAX_PACKET 1024
-#define DEFAULT_MAX_CHANNEL_SIZE 32767
-
 struct utcp_bunch_node
 {
 	struct dl_list_node dl_list_node;
@@ -51,7 +48,7 @@ struct utcp_opened_channels
 
 struct utcp_channels
 {
-	struct utcp_channel* Channels[DEFAULT_MAX_CHANNEL_SIZE];
+	struct utcp_channel* Channels[UTCP_MAX_CHANNELS];
 	struct utcp_opened_channels open_channels;
 	int32_t InitOutReliable;
 	int32_t InitInReliable;

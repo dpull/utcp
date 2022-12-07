@@ -13,8 +13,9 @@ void config()
 	static sample_config config;
 	g_config = &config;
 
-	g_config->log_level_limit = log_level::Log;
+	g_config->log_level_limit = log_level::Verbose;
 	g_config->outgoing_loss = 50;
+	g_config->is_gp = true;
 }
 
 static void vlog(int level, const char* fmt, va_list marker)
@@ -78,7 +79,7 @@ void ds()
 	auto now = std::chrono::high_resolution_clock::now();
 	sample_loop loop;
 
-	listener->listen("127.0.0.1", 7777);
+	listener->listen("127.0.0.1", 10500);
 
 	while (true)
 	{
@@ -100,7 +101,7 @@ void echo()
 	listener->listen("127.0.0.1", 8241);
 	client->async_connnect("127.0.0.1", 8241);
 
-	while (loop.frame < 5000)
+	while (true)
 	{
 		loop.tick();
 
@@ -112,7 +113,6 @@ void echo()
 			listener->post_tick();
 			client->flush_incoming_cache();
 			client->send_flush();
-			log(log_level::Verbose, "post_tick");
 		}
 	}
 }
@@ -125,8 +125,9 @@ int main(int argc, const char* argv[])
 	utcp::event_handler::config(vlog);
 	utcp::event_handler::enbale_dump_data(g_config->log_level_limit >= log_level::Verbose);
 
-	// ds();
-	echo();
+	ds();
+	// echo();
 
+	log(log_level::Log, "server stop");
 	return 0;
 }

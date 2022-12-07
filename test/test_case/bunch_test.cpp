@@ -9,13 +9,13 @@ TEST(bunch, read_write)
 {
 	struct utcp_bunch utcp_bunch1;
 	memset(&utcp_bunch1, 0, sizeof(utcp_bunch1));
-	utcp_bunch1.NameIndex = 0;
+	utcp_bunch1.ChType = 0;
 	utcp_bunch1.ChSequence = 0;
 	utcp_bunch1.ChIndex = 543;
 	utcp_bunch1.DataBitsLen = 789;
 	utcp_bunch1.bOpen = 0;
 	utcp_bunch1.bClose = 1;
-	utcp_bunch1.CloseReason = 9;
+	utcp_bunch1.bDormant = 1;
 	utcp_bunch1.bIsReplicationPaused = 1;
 	utcp_bunch1.bReliable = 0;
 	utcp_bunch1.bHasPackageMapExports = 0;

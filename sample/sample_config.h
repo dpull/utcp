@@ -16,6 +16,7 @@ struct sample_config
 {
 	log_level log_level_limit;
 	int outgoing_loss;
+	bool is_gp;
 };
 
 extern sample_config* g_config;

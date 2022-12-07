@@ -3,13 +3,9 @@
 #include "utcp_channel.h"
 #include "utcp_handshake.h"
 #include "utcp_packet.h"
-#include "utcp_packet_notify.h"
-#include "utcp_sequence_number.h"
 #include "utcp_utils.h"
 #include <assert.h>
 #include <string.h>
-
-#define KeepAliveTime (int)(0.2 * 1000)
 
 static struct utcp_config utcp_config = {0};
 
@@ -84,7 +80,7 @@ void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secre
 
 int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const uint8_t* buffer, int len)
 {
-	utcp_dump("connectionless_incoming", 0, buffer, len);
+	utcp_dump("listener", "incoming", buffer, len);
 	return process_connectionless_packet(fd, address, buffer, len);
 }
 
@@ -141,12 +137,12 @@ void utcp_connect(struct utcp_connection* fd)
 // UNetConnection::ReceivedRawPacket
 bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
-	utcp_dump("ordered_incoming", 0, buffer, len);
+	utcp_dump(fd->debug_name, "incoming", buffer, len);
 
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 	{
-		utcp_log(Warning, "[conn:%p]Received packet with 0's in last byte of packet", fd);
+		utcp_log(Warning, "[%s]Received packet with 0's in last byte of packet", fd->debug_name);
 		utcp_mark_close(fd, ZeroLastByte);
 		return false;
 	}
@@ -155,16 +151,14 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 	if (ret != 0)
 	{
 		if (!is_client(fd))
-			utcp_log(Warning, "[conn:%p]handshake_incoming failed, ret=%d", ret);
+			utcp_log(Warning, "[%s]handshake_incoming failed, ret=%d", fd->debug_name, ret);
 		utcp_mark_close(fd, PacketHandlerIncomingError);
 		return false;
 	}
 
 	size_t left_bits = bitbuf_left_bits(&bitbuf);
 	if (left_bits == 0)
-	{
 		return true;
-	}
 
 	fd->LastReceiveRealtime = utcp_gettime_ms();
 
@@ -179,15 +173,15 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 
 int utcp_update(struct utcp_connection* fd)
 {
-	handshake_update(fd);
-
 	if (is_connected(fd))
 	{
 		int64_t now = utcp_gettime_ms();
 		if (now - fd->LastReceiveRealtime > UTCP_CONNECT_TIMEOUT)
-		{
 			utcp_mark_close(fd, ConnectionTimeout);
-		}
+	}
+	else
+	{
+		handshake_update(fd);
 	}
 
 	utcp_delay_close_channel(&fd->channels);
@@ -205,7 +199,6 @@ int32_t utcp_peep_packet_id(struct utcp_connection* fd, uint8_t* buffer, int len
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 		return -1;
 
-	read_magic_header(&bitbuf);
 	uint8_t bHandshakePacket;
 	if (!bitbuf_read_bit(&bitbuf, &bHandshakePacket))
 		return -1;
@@ -224,9 +217,15 @@ int32_t utcp_expect_packet_id(struct utcp_connection* fd)
 int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 {
 	int32_t packet_id = SendRawBunch(fd, bunch);
-	utcp_log(Verbose, "send bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d, PacketId=%d", bunch->bOpen, bunch->bClose, bunch->NameIndex, bunch->ChIndex,
-			 bunch->DataBitsLen, packet_id);
-	return packet_id;
+	if (packet_id >= 0)
+	{
+		utcp_log(Verbose, "[%s]send bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d, PacketId=%d",
+				 fd->debug_name, bunch->bOpen, bunch->bClose, bunch->ChType, bunch->ChIndex, bunch->DataBitsLen, packet_id);
+		return packet_id;
+	}
+
+	utcp_log(Warning, "[%s]send bunch failed:%d", packet_id);
+	return PACKET_ID_INDEX_NONE;
 }
 
 // UNetConnection::FlushNet
@@ -236,38 +235,44 @@ int utcp_send_flush(struct utcp_connection* fd)
 		return 0;
 
 	int64_t now = utcp_gettime_ms();
-	if (fd->SendBufferBitsNum == 0 && !fd->HasDirtyAcks && (now - fd->LastSendTime) < KeepAliveTime)
+
+	// If there is any pending data to send, send it.
+	if (fd->SendBufferBitsNum == 0 && (now - fd->LastSendTime) < UTCP_KEEP_ALIVE_TIME)
 		return 0;
 
+	// If sending keepalive packet, still write the packet id
 	if (fd->SendBufferBitsNum == 0)
-		WriteBitsToSendBuffer(fd, NULL, 0);
+		WriteBitsToSendBuffer(fd, NULL, 0, NULL, 0);
 
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));
 
 	// Write the UNetConnection-level termination bit
-	bitbuf_write_end(&bitbuf);
+	bitbuf_write_end(&bitbuf); // Packet
 
-	// if we update ack, we also update received ack associated with outgoing seq
-	// so we know how many ack bits we need to write (which is updated in received packet)
-	WritePacketHeader(fd, &bitbuf);
-
-	bitbuf_write_end(&bitbuf);
+	bitbuf_write_end(&bitbuf); // Handshake
 	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;
 
-	packet_notify_commit_and_inc_outseq(&fd->packet_notify);
 	fd->LastSendTime = now;
 	fd->OutPacketId++;
+
+	// Move acks around.
+	for (int32_t i = 0; i < fd->QueuedAcksCount; i++)
+	{
+		fd->ResendAcks[fd->ResendAcksCount] = fd->QueuedAcks[i];
+		fd->ResendAcksCount++;
+	}
+	fd->QueuedAcksCount = 0;
 
 	return 0;
 }
 
 bool utcp_send_would_block(struct utcp_connection* fd, int count)
 {
-	return fd->OutPacketId - fd->OutAckPacketId + count >= (MaxSequenceHistoryLength - 2);
+	return fd->OutPacketId - fd->OutAckPacketId + count >= (UTCP_MAX_PARTIAL_BUNCH_COUNT - 2);
 }
 
 void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason)
@@ -276,5 +281,5 @@ void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason)
 		return;
 	fd->bClose = true;
 	fd->CloseReason = close_reason;
-	utcp_log(Warning, "utcp_mark_close fd=%p, type=%hhu", fd, close_reason);
+	utcp_log(Warning, "[%s]utcp_mark_close, type=%hhu", fd->debug_name, close_reason);
 }

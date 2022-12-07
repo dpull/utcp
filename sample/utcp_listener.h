@@ -34,6 +34,8 @@ class udp_utcp_listener : public utcp::listener
 	void tick();
 	void post_tick();
 
+	virtual void incoming(const char* address, uint8_t* data, int count) override;
+
   protected:
 	virtual void on_accept(bool reconnect) override;
 	virtual void on_outgoing(const void* data, int len) override;
@@ -43,6 +45,7 @@ class udp_utcp_listener : public utcp::listener
   protected:
 	udp_socket socket;
 	std::unordered_map<struct sockaddr_in, utcp::conn*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
+	bool has_watermark = false;
 };
 
 template <typename T>
@@ -56,7 +59,7 @@ class udp_utcp_listener_impl : public udp_utcp_listener
 
 	virtual void accept(utcp::conn* c, bool reconnect) override
 	{
-		static_cast<T*>(c)->bind(socket.socket_fd, &socket.dest_addr, socket.dest_addr_len);
+		static_cast<T*>(c)->bind(socket.socket_fd, &socket.dest_addr, socket.dest_addr_len, has_watermark);
 		udp_utcp_listener::accept(c, reconnect);
 	}
 };
