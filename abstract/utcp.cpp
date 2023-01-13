@@ -226,7 +226,7 @@ packet_id_range conn::send_bunch(large_bunch* bunch)
 	packet_id_range range{packet_id_range::INDEX_NONE, packet_id_range::INDEX_NONE};
 	for (auto& sub : *bunch)
 	{
-		auto packet_id = utcp_send_bunch(_utcp_fd, bunch);
+		auto packet_id = utcp_send_bunch(_utcp_fd, &sub);
 		if (range.first == packet_id_range::INDEX_NONE)
 			range.first = packet_id;
 		range.last = packet_id;
