@@ -11,7 +11,7 @@ namespace utcp
 {
 // Fairly large number, and probably a bad idea to even have a bunch this size, but want to be safe for now and not throw out legitimate data
 constexpr int32_t NetMaxConstructedPartialBunchSizeBytes = 1024 * 64;
-constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BITS = 7265; // Connection->GetMaxSingleBunchSizeBits();
+constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BITS = 4014; // Connection->GetMaxSingleBunchSizeBits();
 constexpr int32_t MAX_SINGLE_BUNCH_SIZE_BYTES = MAX_SINGLE_BUNCH_SIZE_BITS / 8;
 constexpr int32_t MAX_PARTIAL_BUNCH_SIZE_BITS = MAX_SINGLE_BUNCH_SIZE_BYTES * 8;
 static_assert(UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES, "UDP_MTU_SIZE > MAX_SINGLE_BUNCH_SIZE_BYTES");
@@ -61,8 +61,14 @@ struct large_bunch : utcp_bunch
 {
 	explicit large_bunch(const uint8_t* data, size_t data_bits_len);
 	explicit large_bunch(utcp_bunch* const bunches[], int count);
+    explicit large_bunch();
 
-	uint32_t ExtDataBitsLen = 0;
+	uint32_t ExtDataBitsLen : 28;
+	uint32_t bExtPartialSetFlag : 1;
+	uint32_t bExtPartial : 1;
+	uint32_t bExtPartialInitial : 1;
+	uint32_t bExtPartialFinal : 1;
+
 	uint8_t ExtData[UDP_MTU_SIZE * 64];
 
 #pragma region Range - based for loop
@@ -87,7 +93,7 @@ struct large_bunch : utcp_bunch
 	iterator end();
 	utcp_bunch& sub_bunch(int pos);
 	int num();
-	large_bunch() = delete;
+	
 	large_bunch(const large_bunch&) = delete;
 	large_bunch(large_bunch&&) = delete;
 #pragma endregion

@@ -125,6 +125,11 @@ large_bunch::large_bunch(utcp_bunch* const bunches[], int count)
 	}
 }
 
+large_bunch::large_bunch()
+{
+    memset(this, 0, sizeof(*this));
+}
+
 large_bunch::iterator large_bunch::begin()
 {
 	large_bunch::iterator it;
@@ -149,10 +154,26 @@ utcp_bunch& large_bunch::sub_bunch(int pos)
 		return *this;
 	}
 
+    if (!bExtPartialSetFlag)
+    {
+        bExtPartialSetFlag = 1;
+        bExtPartial = this->bPartial;
+        bExtPartialInitial = this->bPartialInitial;
+        bExtPartialFinal = this->bPartialFinal;
+    }
+
 	int last = ExtDataBitsLen / MAX_PARTIAL_BUNCH_SIZE_BITS;
 	this->bPartial = last > 0;
 	this->bPartialInitial = pos == 0;
 	this->bPartialFinal = pos == last;
+
+    if (bExtPartial)
+    {
+        if (this->bPartialInitial)
+            this->bPartialInitial = bExtPartialInitial;
+        if (this->bPartialFinal)
+            this->bPartialFinal = bExtPartialFinal;
+    }
 
 	if (pos == last)
 	{
@@ -309,7 +330,7 @@ utcp::packet_id_range bufconn::send_bunch(large_bunch* bunch)
 	{
 		if (!utcp_send_would_block(_utcp_fd, 1))
 		{
-			auto packet_id = utcp_send_bunch(_utcp_fd, bunch);
+			auto packet_id = utcp_send_bunch(_utcp_fd, &sub);
 			if (range.first == packet_id_range::INDEX_NONE)
 				range.first = packet_id;
 			range.last = packet_id;
