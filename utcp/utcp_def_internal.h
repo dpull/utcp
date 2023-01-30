@@ -20,6 +20,7 @@ enum
 	SECRET_COUNT = 2,
 	COOKIE_BYTE_SIZE = 20,
 	ADDRSTR_PORT_SIZE = 64, // INET6_ADDRSTRLEN + PORT_LEN
+	DEBUG_NAME_MAX_SIZE = 32,
 };
 
 #define SECRET_UPDATE_TIME 15.f
@@ -105,6 +106,7 @@ struct utcp_challenge_data
 struct utcp_connection
 {
 	void* userdata;
+	char debug_name[DEBUG_NAME_MAX_SIZE];
 
 	uint8_t bClose : 1;
 	uint8_t CloseReason : 7;

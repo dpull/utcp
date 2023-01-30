@@ -90,8 +90,8 @@ static bool ReceivedNextBunch(struct utcp_connection* fd, struct utcp_bunch_node
 	for (int i = 0; i < HandleBunchCount; ++i)
 	{
 		struct utcp_bunch* cur_utcp_bunch = HandleBunch[i];
-		utcp_log(Verbose, "recv bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d", cur_utcp_bunch->bOpen, cur_utcp_bunch->bClose, cur_utcp_bunch->NameIndex,
-				 cur_utcp_bunch->ChIndex, cur_utcp_bunch->DataBitsLen);
+		utcp_log(Verbose, "[%s]received bunch, bOpen=%d, bClose=%d, NameIndex=%d, ChIndex=%d, NumBits=%d", fd->debug_name, cur_utcp_bunch->bOpen, cur_utcp_bunch->bClose,
+				 cur_utcp_bunch->NameIndex, cur_utcp_bunch->ChIndex, cur_utcp_bunch->DataBitsLen);
 	}
 
 	utcp_recv_bunch(fd, HandleBunch, HandleBunchCount);
@@ -142,14 +142,14 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 		struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
 		if (!utcp_bunch_read(utcp_bunch, bitbuf))
 		{
-			utcp_log(Warning, "Bunch header overflowed");
+			utcp_log(Warning, "[%s]Bunch header overflowed", fd->debug_name);
 			utcp_mark_close(fd, BunchOverflow);
 			break;
 		}
 
 		if (utcp_bunch->ChIndex >= DEFAULT_MAX_CHANNEL_SIZE)
 		{
-			utcp_log(Warning, "Bunch channel index exceeds channel limit");
+			utcp_log(Warning, "[%s]Bunch channel index exceeds channel limit", fd->debug_name);
 			utcp_mark_close(fd, BunchBadChannelIndex);
 			break;
 		}
@@ -326,7 +326,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	return true;
 }
 
-int PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
+int32_t PeekPacketId(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
 	struct notification_header notification_header;
 	int ret = packet_notify_read_header(bitbuf, &notification_header);
@@ -406,7 +406,7 @@ void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 }
 
 // void UNetConnection::PrepareWriteBitsToSendBuffer
-void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
+static void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t SizeInBits, const int32_t ExtraSizeInBits)
 {
 	const int32_t TotalSizeInBits = SizeInBits + ExtraSizeInBits;
 
@@ -437,7 +437,7 @@ void PrepareWriteBitsToSendBuffer(struct utcp_connection* fd, const int32_t Size
 }
 
 // UNetConnection::WriteBitsToSendBufferInternal
-int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
+static int32_t WriteBitsToSendBufferInternal(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits, const uint8_t* ExtraBits, const int32_t ExtraSizeInBits)
 {
 	struct bitbuf bitbuf;
 	bitbuf_write_reuse(&bitbuf, fd->SendBuffer, fd->SendBufferBitsNum, sizeof(fd->SendBuffer));
@@ -532,8 +532,8 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 }
 
 // UNetConnection::WriteBitsToSendBuffer
-int WriteBitsToSendBuffer(struct utcp_connection* fd, char* buffer, int bits_len)
+int WriteBitsToSendBuffer(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits)
 {
-	PrepareWriteBitsToSendBuffer(fd, 0, bits_len);
-	return WriteBitsToSendBufferInternal(fd, NULL, 0, (uint8_t*)buffer, bits_len);
+	PrepareWriteBitsToSendBuffer(fd, 0, SizeInBits);
+	return WriteBitsToSendBufferInternal(fd, NULL, 0, Bits, SizeInBits);
 }

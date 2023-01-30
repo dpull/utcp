@@ -69,6 +69,7 @@ void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t a
 	memcpy(&dest_addr, addr, addr_len);
 	dest_addr_len = addr_len;
 	socket_fd = fd;
+	set_debug_name("server");
 }
 
 void ds_connection::on_disconnect(int close_reason)
@@ -95,6 +96,8 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 
 	uint8_t msg_type;
 	codec >> msg_type;
+
+	log(log_level::Verbose, "on_recv msg_type=%hhd\n", msg_type);
 	switch (msg_type)
 	{
 	case 0:
@@ -109,7 +112,7 @@ void ds_connection::on_recv_bunch(struct utcp_bunch* const bunches[], int count)
 		break;
 
 	default:
-		log(log_level::Verbose, "on_recv msg_type=%hhd\n", msg_type);
+		log(log_level::Warning, "on_recv unknown msg_type=%hhd\n", msg_type);
 	}
 }
 

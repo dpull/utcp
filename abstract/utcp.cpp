@@ -125,6 +125,11 @@ large_bunch::large_bunch(utcp_bunch* const bunches[], int count)
 	}
 }
 
+large_bunch::large_bunch()
+{
+    memset(this, 0, sizeof(*this));
+}
+
 large_bunch::iterator large_bunch::begin()
 {
 	large_bunch::iterator it;
@@ -149,10 +154,26 @@ utcp_bunch& large_bunch::sub_bunch(int pos)
 		return *this;
 	}
 
+    if (!bExtPartialSetFlag)
+    {
+        bExtPartialSetFlag = 1;
+        bExtPartial = this->bPartial;
+        bExtPartialInitial = this->bPartialInitial;
+        bExtPartialFinal = this->bPartialFinal;
+    }
+
 	int last = ExtDataBitsLen / MAX_PARTIAL_BUNCH_SIZE_BITS;
 	this->bPartial = last > 0;
 	this->bPartialInitial = pos == 0;
 	this->bPartialFinal = pos == last;
+
+    if (bExtPartial)
+    {
+        if (this->bPartialInitial)
+            this->bPartialInitial = bExtPartialInitial;
+        if (this->bPartialFinal)
+            this->bPartialFinal = bExtPartialFinal;
+    }
 
 	if (pos == last)
 	{
@@ -226,7 +247,7 @@ packet_id_range conn::send_bunch(large_bunch* bunch)
 	packet_id_range range{packet_id_range::INDEX_NONE, packet_id_range::INDEX_NONE};
 	for (auto& sub : *bunch)
 	{
-		auto packet_id = utcp_send_bunch(_utcp_fd, bunch);
+		auto packet_id = utcp_send_bunch(_utcp_fd, &sub);
 		if (range.first == packet_id_range::INDEX_NONE)
 			range.first = packet_id;
 		range.last = packet_id;
@@ -262,6 +283,24 @@ void conn::flush_packet_order_cache(bool forced_flush)
 		_packet_order_cache.pop();
 	}
 }
+
+void conn::set_debug_name(const char* debug_name)
+{
+	if (debug_name)
+	{
+		strncpy(_utcp_fd->debug_name, debug_name, sizeof (_utcp_fd->debug_name));
+		_utcp_fd->debug_name[sizeof (_utcp_fd->debug_name)-1] = '\0';
+	}
+	else
+	{
+		_utcp_fd->debug_name[0] = '\0';
+	}
+}
+const char* conn::debug_name()
+{
+	return _utcp_fd->debug_name;
+}
+
 void bufconn::update()
 {
 	try_send();
@@ -293,7 +332,7 @@ utcp::packet_id_range bufconn::send_bunch(large_bunch* bunch)
 	{
 		if (!utcp_send_would_block(_utcp_fd, 1))
 		{
-			auto packet_id = utcp_send_bunch(_utcp_fd, bunch);
+			auto packet_id = utcp_send_bunch(_utcp_fd, &sub);
 			if (range.first == packet_id_range::INDEX_NONE)
 				range.first = packet_id;
 			range.last = packet_id;

@@ -55,7 +55,7 @@ static inline void* utcp_realloc(void* ptr, size_t size)
 	}
 }
 
-static inline void utcp_dump(const char* type, int ext, const void* data, int len)
+static inline void utcp_dump(const char* debug_name, const char* type, const void* data, int len)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (!utcp_config->EnableDump)
@@ -80,7 +80,7 @@ static inline void utcp_dump(const char* type, int ext, const void* data, int le
 		size += ret;
 	}
 	str[size] = '\0';
-	utcp_log(Verbose, "[DUMP]%s-%d\t%d\t{%s}", type, ext, len, str);
+	utcp_log(Verbose, "[%s][DUMP]%s\t%d\t{%s}", debug_name, type, len, str);
 }
 
 static inline bool write_magic_header(struct bitbuf* bitbuf)
@@ -116,7 +116,7 @@ static inline double utcp_gettime(void)
 
 static inline void utcp_listener_outgoing(struct utcp_listener* fd, const void* buffer, size_t len)
 {
-	utcp_dump("listener outgoing", 0, buffer, (int)len);
+	utcp_dump("listener", "outgoing", buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_outgoing)
 	{
@@ -126,7 +126,7 @@ static inline void utcp_listener_outgoing(struct utcp_listener* fd, const void* 
 
 static inline void utcp_connection_outgoing(struct utcp_connection* fd, const void* buffer, size_t len)
 {
-	utcp_dump("connection outgoing", 0, buffer, (int)len);
+	utcp_dump(fd->debug_name, "outgoing", buffer, (int)len);
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_outgoing)
 	{
@@ -137,7 +137,6 @@ static inline void utcp_connection_outgoing(struct utcp_connection* fd, const vo
 static inline void utcp_on_accept(struct utcp_listener* fd, bool reconnect)
 {
 	utcp_log(Log, "accept:%s, reconnect=%d", fd->LastChallengeSuccessAddress, reconnect);
-
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_accept)
 	{
@@ -147,8 +146,7 @@ static inline void utcp_on_accept(struct utcp_listener* fd, bool reconnect)
 
 static inline void utcp_on_connect(struct utcp_connection* fd, bool reconnect)
 {
-	utcp_log(Log, "connected, reconnect=%d", reconnect);
-
+	utcp_log(Log, "[%s]connected, reconnect=%d", fd->debug_name, reconnect);
 	struct utcp_config* utcp_config = utcp_get_config();
 	if (utcp_config->on_connect)
 	{

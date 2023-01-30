@@ -61,8 +61,14 @@ struct large_bunch : utcp_bunch
 {
 	explicit large_bunch(const uint8_t* data, size_t data_bits_len);
 	explicit large_bunch(utcp_bunch* const bunches[], int count);
+    explicit large_bunch();
 
-	uint32_t ExtDataBitsLen = 0;
+	uint32_t ExtDataBitsLen : 28;
+	uint32_t bExtPartialSetFlag : 1;
+	uint32_t bExtPartial : 1;
+	uint32_t bExtPartialInitial : 1;
+	uint32_t bExtPartialFinal : 1;
+
 	uint8_t ExtData[UDP_MTU_SIZE * 64];
 
 #pragma region Range - based for loop
@@ -87,7 +93,7 @@ struct large_bunch : utcp_bunch
 	iterator end();
 	utcp_bunch& sub_bunch(int pos);
 	int num();
-	large_bunch() = delete;
+	
 	large_bunch(const large_bunch&) = delete;
 	large_bunch(large_bunch&&) = delete;
 #pragma endregion
@@ -119,6 +125,8 @@ class conn : public event_handler
 
 	utcp_connection* get_fd();
 	bool is_closed();
+	void set_debug_name(const char* debug_name);
+	const char* debug_name();
 
   protected:
 	void flush_packet_order_cache(bool forced_flush);

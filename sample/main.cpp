@@ -128,5 +128,6 @@ int main(int argc, const char* argv[])
 	// ds();
 	echo();
 
+	log(log_level::Log, "server stop");
 	return 0;
 }

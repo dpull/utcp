@@ -301,14 +301,14 @@ struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channe
 			utcp_channel = alloc_utcp_channel(utcp_channels->InitInReliable, utcp_channels->InitOutReliable);
 			utcp_channels->Channels[utcp_bunch->ChIndex] = utcp_channel;
 			opened_channels_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
+
+			utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
 		}
 		else
 		{
 			assert(false);
 			utcp_log(Warning, "utcp_get_channel failed");
 		}
-
-		utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
 	}
 	if (utcp_bunch->bClose && utcp_channel)
 	{
