@@ -167,7 +167,7 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 		// Ignore if reliable packet has already been processed.
 		if (utcp_bunch->bReliable && utcp_bunch->ChSequence <= utcp_channel->InReliable)
 		{
-			// utcp_log(Log, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
+			utcp_log(Verbose, "ReceivedRawBunch: Received outdated bunch (Channel %d Current Sequence %i)", utcp_bunch->ChIndex, utcp_channel->InReliable);
 			break;
 		}
 

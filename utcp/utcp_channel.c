@@ -275,6 +275,8 @@ static void utcp_close_channel(struct utcp_channels* utcp_channels, int ChIndex)
 	free_utcp_channel(utcp_channels->Channels[ChIndex]);
 	utcp_channels->Channels[ChIndex] = NULL;
 	opened_channels_remove(&utcp_channels->open_channels, ChIndex);
+
+	utcp_log(Verbose, "close channel:%hu", ChIndex);
 }
 
 void utcp_channels_uninit(struct utcp_channels* utcp_channels)
@@ -302,7 +304,7 @@ struct utcp_channel* utcp_channels_get_channel(struct utcp_channels* utcp_channe
 			utcp_channels->Channels[utcp_bunch->ChIndex] = utcp_channel;
 			opened_channels_add(&utcp_channels->open_channels, utcp_bunch->ChIndex);
 
-			utcp_log(Log, "create channel:%hu", utcp_bunch->ChIndex);
+			utcp_log(Verbose, "create channel:%hu", utcp_bunch->ChIndex);
 		}
 		else
 		{
@@ -352,7 +354,7 @@ void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacket
 			utcp_bunch_node[i]->packet_id = packet_id;
 			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
 
-			utcp_log(Log, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
+			utcp_log(Verbose, "ReceivedNak resending %d-->%d", NakPacketId, packet_id);
 		}
 	}
 }

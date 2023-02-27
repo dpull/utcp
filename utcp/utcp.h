@@ -41,6 +41,8 @@ int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch);
 int utcp_send_flush(struct utcp_connection* fd);
 bool utcp_send_would_block(struct utcp_connection* fd, int count);
 
+bool utcp_is_handshake_packet(uint8_t* buffer, int len);
+
 void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason);
 
 #ifdef __cplusplus

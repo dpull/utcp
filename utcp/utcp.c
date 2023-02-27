@@ -111,6 +111,7 @@ void utcp_init(struct utcp_connection* fd, void* userdata)
 {
 	memset(fd, 0, sizeof(*fd));
 	fd->userdata = userdata;
+	fd->LastReceiveRealtime = utcp_gettime_ms();
 }
 
 void utcp_uninit(struct utcp_connection* fd)
@@ -139,6 +140,8 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 {
 	utcp_dump(fd->debug_name, "incoming", buffer, len);
 
+	fd->LastReceiveRealtime = utcp_gettime_ms();
+
 	struct bitbuf bitbuf;
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 	{
@@ -160,7 +163,6 @@ bool utcp_incoming(struct utcp_connection* fd, uint8_t* buffer, int len)
 	if (left_bits == 0)
 		return true;
 
-	fd->LastReceiveRealtime = utcp_gettime_ms();
 
 	bitbuf.size--;
 	ret = ReceivedPacket(fd, &bitbuf);
@@ -224,7 +226,7 @@ int32_t utcp_send_bunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 		return packet_id;
 	}
 
-	utcp_log(Warning, "[%s]send bunch failed:%d", packet_id);
+	utcp_log(Warning, "[%s]send bunch failed:%d", fd->debug_name, packet_id);
 	return PACKET_ID_INDEX_NONE;
 }
 
@@ -273,6 +275,21 @@ int utcp_send_flush(struct utcp_connection* fd)
 bool utcp_send_would_block(struct utcp_connection* fd, int count)
 {
 	return fd->OutPacketId - fd->OutAckPacketId + count >= (UTCP_MAX_PARTIAL_BUNCH_COUNT - 2);
+}
+
+bool utcp_is_handshake_packet(uint8_t* buffer, int len)
+{
+	struct bitbuf bitbuf;
+	if (!bitbuf_read_init(&bitbuf, buffer, len))
+	{
+		return false;
+	}
+
+	uint8_t bHandshakePacket;
+	if (!bitbuf_read_bit(&bitbuf, &bHandshakePacket))
+		return false;
+	
+	return bHandshakePacket;
 }
 
 void utcp_mark_close(struct utcp_connection* fd, uint8_t close_reason)

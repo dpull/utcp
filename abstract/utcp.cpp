@@ -350,9 +350,9 @@ void bufconn::try_send()
 		if (utcp_send_would_block(_utcp_fd, 1))
 			break;
 
-		auto& bunch = _send_buffer.back();
+		auto& bunch = _send_buffer.front();
 		utcp_send_bunch(_utcp_fd, &bunch);
-		_send_buffer.pop_back();
+		_send_buffer.pop_front();
 	}
 }
 
