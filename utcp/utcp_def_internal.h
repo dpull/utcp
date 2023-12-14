@@ -13,9 +13,9 @@
 enum
 {
 	PACKET_ID_INDEX_NONE = -1,
-	HANDSHAKE_PACKET_SIZE_BITS = 227,
-	RESTART_HANDSHAKE_PACKET_SIZE_BITS = 2,
-	RESTART_RESPONSE_SIZE_BITS = 387,
+	HANDSHAKE_PACKET_SIZE_BITS = 291,
+	RESTART_HANDSHAKE_PACKET_SIZE_BITS = 66,
+	RESTART_RESPONSE_SIZE_BITS = 451,
 	SECRET_BYTE_SIZE = 64,
 	SECRET_COUNT = 2,
 	COOKIE_BYTE_SIZE = 20,
@@ -64,15 +64,6 @@ struct utcp_listener
 	char LastChallengeSuccessAddress[ADDRSTR_PORT_SIZE];
 };
 
-
-enum utcp_challenge_state
-{
-	UnInitialized,		// HandlerComponent not yet initialized
-	InitializedOnLocal, // Initialized on local instance
-	InitializeOnRemote, // Initialized on remote instance, not on local instance
-	Initialized			// Initialized on both local and remote instances
-};
-
 struct utcp_challenge_data
 {
 	uint8_t state : 2;
@@ -99,8 +90,17 @@ struct utcp_challenge_data
 	/** The Cookie value of the last challenge response sent. Will differ from AuthorisedCookie, if a handshake retry is triggered. */
 	uint8_t LastCookie[COOKIE_BYTE_SIZE];
 
+	/** The number of sent handshake packets, added to packets to aid packet dump debugging (may roll over) */
+	uint8_t SentHandshakePacketCount;
+
 	/** The local (client) time at which the last restart handshake request was received */
 	int64_t LastRestartPacketTimestamp;
+
+	/** Cached version of the serverside UEngine.GlobalNetTravelCount value, for writing session id's */
+	uint32_t CachedGlobalNetTravelCount;
+
+	/** Cached version of the clientside per-NetDriverDefinition 'ClientID' value, for writing client connection id's */
+	uint32_t CachedClientID;
 };
 
 struct utcp_connection
@@ -140,6 +140,9 @@ struct utcp_connection
 
 	/** Stores the bit number where we wrote the dummy packet info in the packet header */
 	// size_t HeaderMarkForPacketInfo;
+
+	uint8_t LastSessionID;
+	uint8_t LastClientID;
 };
 
 enum UTcpNetCloseResult

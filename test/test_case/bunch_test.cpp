@@ -1,5 +1,6 @@
 ﻿#include "utcp/utcp.h"
-extern "C" {
+extern "C"
+{
 #include "utcp/utcp_bunch.h"
 }
 #include "gtest/gtest.h"

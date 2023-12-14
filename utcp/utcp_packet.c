@@ -8,6 +8,8 @@
 #include "utcp_utils.h"
 #include <assert.h>
 
+#include "utcp_handshake.h"
+
 enum
 {
 	MAX_PACKET_TRAILER_BITS = 1,
@@ -133,7 +135,7 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 
 	do
 	{
-		utcp_bunch_node = alloc_utcp_bunch_node(fd);
+		utcp_bunch_node = alloc_utcp_bunch_node();
 		if (!utcp_bunch_node)
 		{
 			break;
@@ -146,6 +148,7 @@ static void ReceivedRawBunch(struct utcp_connection* fd, struct bitbuf* bitbuf, 
 			utcp_mark_close(fd, BunchOverflow);
 			break;
 		}
+		utcp_bunch->PacketId = fd->InPacketId;
 
 		if (utcp_bunch->ChIndex >= DEFAULT_MAX_CHANNEL_SIZE)
 		{
@@ -288,7 +291,7 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 		// The only bunch we would process would be unreliable RPC's, which could allow for replay attacks
 		// So rather than add individual protection for unreliable RPC's as well, just kill it at the source,
 		// which protects everything in one fell swoop
-		utcp_log(Verbose, "'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", packet_header.notification_header.Seq, fd->packet_notify.InSeq);
+		utcp_log(Verbose, "[%s]'out of order' packet sequences: PacketSeq=%d, NotifyPacketSeq=%d", fd->debug_name, packet_header.notification_header.Seq, fd->packet_notify.InSeq);
 		return true;
 	}
 
@@ -305,6 +308,9 @@ bool ReceivedPacket(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	// Update incoming sequence data and deliver packet notifications
 	// Packet is only accepted if both the incoming sequence number and incoming ack data are valid
 	packet_notify_update(HandlePacketNotification, fd, &fd->packet_notify, &packet_header.notification_header);
+
+	if (bitbuf->num == bitbuf->size)
+		utcp_log(Verbose, "[%s] InPacketId=%d no bunch", fd->debug_name, fd->InPacketId);
 
 	bool bSkipAck = false;
 	while (bitbuf->num < bitbuf->size)
@@ -357,14 +363,9 @@ int64_t GetFreeSendBufferBits(struct utcp_connection* fd)
 }
 
 // StatelessConnectHandlerComponent::Outgoing
-static int WritePacketOutgoingHeader(struct bitbuf* bitbuf)
+static int WritePacketOutgoingHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 {
-	assert(bitbuf->num == 0);
-	write_magic_header(bitbuf);
-
-	uint8_t bHandshakePacket = 0;
-	bitbuf_write_bit(bitbuf, bHandshakePacket);
-	return 0;
+	return write_packet_header(bitbuf, LastRemoteHandshakeVersion(), fd->LastSessionID, fd->LastClientID, 0);
 }
 
 // UNetConnection::WritePacketHeader
@@ -378,7 +379,7 @@ void WritePacketHeader(struct utcp_connection* fd, struct bitbuf* bitbuf)
 	bitbuf->num = 0;
 
 	// UNetConnection::LowLevelSend-->PacketHandler::Outgoing_Internal-->StatelessConnectHandlerComponent::Outgoing
-	WritePacketOutgoingHeader(bitbuf);
+	WritePacketOutgoingHeader(fd, bitbuf);
 
 	struct packet_header packet_header;
 	bool bWroteHeader = false;
@@ -517,7 +518,7 @@ int32_t SendRawBunch(struct utcp_connection* fd, struct utcp_bunch* bunch)
 
 	if (bunch->bReliable)
 	{
-		struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node(fd);
+		struct utcp_bunch_node* utcp_bunch_node = alloc_utcp_bunch_node();
 		struct bitbuf bitbuf_all;
 		bitbuf_write_init(&bitbuf_all, utcp_bunch_node->bunch_data, sizeof(utcp_bunch_node->bunch_data));
 		bitbuf_write_bits(&bitbuf_all, buffer, bitbuf.num);

@@ -145,5 +145,3 @@ static inline bool opened_channels_remove(struct utcp_opened_channels* utcp_open
 	utcp_open_channels->num--;
 	return true;
 }
-
-

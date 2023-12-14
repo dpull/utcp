@@ -55,6 +55,20 @@ static inline void* utcp_realloc(void* ptr, size_t size)
 	}
 }
 
+static inline unsigned utcp_rand()
+{
+	struct utcp_config* utcp_config = utcp_get_config();
+	if (!utcp_config->on_rand)
+	{
+		unsigned int lcg_random(void);
+		return lcg_random();
+	}
+	else
+	{
+		return utcp_config->on_rand();
+	}
+}
+
 static inline void utcp_dump(const char* debug_name, const char* type, const void* data, int len)
 {
 	struct utcp_config* utcp_config = utcp_get_config();
@@ -81,25 +95,6 @@ static inline void utcp_dump(const char* debug_name, const char* type, const voi
 	}
 	str[size] = '\0';
 	utcp_log(Verbose, "[%s][DUMP]%s\t%d\t{%s}", debug_name, type, len, str);
-}
-
-static inline bool write_magic_header(struct bitbuf* bitbuf)
-{
-	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->MagicHeaderBits == 0)
-		return true;
-	return bitbuf_write_bits(bitbuf, &utcp_config->MagicHeader, utcp_config->MagicHeaderBits);
-}
-
-static inline bool read_magic_header(struct bitbuf* bitbuf)
-{
-	struct utcp_config* utcp_config = utcp_get_config();
-	if (utcp_config->MagicHeaderBits == 0)
-		return true;
-	uint32_t MagicHeader;
-	if (!bitbuf_read_bits(bitbuf, &MagicHeader, utcp_config->MagicHeaderBits))
-		return false;
-	return MagicHeader == utcp_config->MagicHeader;
 }
 
 static inline int64_t utcp_gettime_ms(void)
@@ -133,6 +128,8 @@ static inline void utcp_connection_outgoing(struct utcp_connection* fd, const vo
 		utcp_config->on_outgoing(fd, fd->userdata, buffer, (int)len);
 	}
 }
+
+#define utcp_raw_send(fd, buffer, len) _Generic((fd), struct utcp_listener *: utcp_listener_outgoing, struct utcp_connection *: utcp_connection_outgoing)(fd, buffer, len)
 
 static inline void utcp_on_accept(struct utcp_listener* fd, bool reconnect)
 {

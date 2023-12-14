@@ -3,8 +3,8 @@
 #pragma once
 
 #include "utcp_def_internal.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 struct utcp_bunch_node* alloc_utcp_bunch_node();
@@ -33,5 +33,3 @@ void utcp_channels_on_ack(struct utcp_channels* utcp_channels, int32_t AckPacket
 typedef int (*write_bunch_fn)(struct utcp_connection* fd, const uint8_t* Bits, const int32_t SizeInBits);
 void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacketId, write_bunch_fn WriteBitsToSendBuffer, struct utcp_connection* fd);
 void utcp_delay_close_channel(struct utcp_channels* utcp_channels);
-
-

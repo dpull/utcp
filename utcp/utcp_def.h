@@ -8,7 +8,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 struct utcp_listener;
@@ -25,11 +26,16 @@ struct utcp_config
 	void (*on_delivery_status)(struct utcp_connection* fd, void* userdata, int32_t packet_id, bool ack);
 	void (*on_log)(int level, const char* msg, va_list args);
 	void* (*on_realloc)(void* ptr, size_t size);
+	unsigned (*on_rand)();
 
 	int64_t ElapsedTime;
 	uint32_t MagicHeader;
 	uint8_t MagicHeaderBits;
 	uint8_t EnableDump;
+
+	uint32_t GlobalNetTravelCount;
+	// LogNetVersion: Example 1.0.0.0, NetCL: 0, EngineNetVer: 30, GameNetVer: 0 (Checksum: 2743834095)
+	uint32_t CachedNetworkChecksum; // 3713382154
 };
 
 /*
@@ -50,6 +56,7 @@ That leaves 1472 bytes (ipv4) or 1452 (ipv6) for your data.
 struct utcp_bunch
 {
 	int32_t ChSequence; // 内部赋值
+	int32_t PacketId;	// 内部赋值
 
 	uint32_t NameIndex;
 	uint16_t ChIndex;

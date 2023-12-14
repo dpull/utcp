@@ -196,7 +196,7 @@ bool bitbuf_write_bits(struct bitbuf* buff, const void* data, size_t bits_size)
 	}
 	else
 	{
-		appBitsCpy(buff->buffer, (int)buff->num, data, 0, (int)bits_size);
+		appBitsCpy(buff->buffer, (int)buff->num, (const uint8_t*)data, 0, (int)bits_size);
 		buff->num += bits_size;
 	}
 	return true;
@@ -207,7 +207,7 @@ bool bitbuf_write_bytes(struct bitbuf* buff, const void* data, size_t size)
 	size_t bits_size = size * 8;
 	if (!allow_opt(buff, bits_size))
 		return false;
-	appBitsCpy(buff->buffer, (int)buff->num, data, 0, (int)bits_size);
+	appBitsCpy(buff->buffer, (int)buff->num, (const uint8_t*)data, 0, (int)bits_size);
 	buff->num += bits_size;
 	return true;
 }

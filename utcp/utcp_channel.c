@@ -120,7 +120,6 @@ enum merge_partial_result merge_partial_data(struct utcp_channel* utcp_channel, 
 	struct utcp_bunch* utcp_bunch = &utcp_bunch_node->utcp_bunch;
 	assert(utcp_bunch->bPartial);
 
-	struct utcp_bunch* HandleBunch = NULL;
 	if (utcp_bunch->bPartialInitial)
 	{
 		// Create new InPartialBunch if this is the initial bunch of a new sequence.
@@ -348,7 +347,7 @@ void utcp_channels_on_nak(struct utcp_channels* utcp_channels, int32_t NakPacket
 		int count = remove_ougoing_data(utcp_channel, NakPacketId, utcp_bunch_node, _countof(utcp_bunch_node));
 		for (int i = 0; i < count; ++i)
 		{
-			int32_t packet_id = WriteBitsToSendBuffer(fd, (char*)utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
+			int32_t packet_id = WriteBitsToSendBuffer(fd, utcp_bunch_node[i]->bunch_data, utcp_bunch_node[i]->bunch_data_len);
 			utcp_bunch_node[i]->packet_id = packet_id;
 			add_ougoing_data(utcp_channel, utcp_bunch_node[i]);
 

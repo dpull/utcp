@@ -114,7 +114,7 @@ class conn : public event_handler
 {
   public:
 	conn();
-	virtual ~conn();
+	virtual ~conn() override;
 
 	virtual void connect();
 	virtual void update();
@@ -153,7 +153,7 @@ class listener : public event_handler
 {
   public:
 	listener();
-	virtual ~listener();
+	virtual ~listener() override;
 
 	void update_secret();
 

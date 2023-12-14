@@ -45,8 +45,7 @@ class udp_utcp_listener : public utcp::listener
 	std::unordered_map<struct sockaddr_in, utcp::conn*, sockaddr_in_Hash, sockaddr_in_Equal> clients;
 };
 
-template <typename T>
-class udp_utcp_listener_impl : public udp_utcp_listener
+template <typename T> class udp_utcp_listener_impl : public udp_utcp_listener
 {
   protected:
 	virtual utcp::conn* new_conn() override

@@ -35,11 +35,11 @@ void echo_connection::send(int num)
 	auto ret = send_bunch(&bunch);
 	log(log_level::Log, "[%s]send%d\t%d", this->debug_name(), ret.first, num);
 	send_flush();
-	
+
 	bunch.bPartialInitial = 0;
 	ret = send_bunch(&bunch);
 	send_flush();
-	
+
 	bunch.bPartialFinal = 1;
 	ret = send_bunch(&bunch);
 	send_flush();

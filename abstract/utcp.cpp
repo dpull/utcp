@@ -1,7 +1,9 @@
 ﻿#include "utcp.hpp"
+
 extern "C" {
 #include "utcp/bit_buffer.h"
 #include "utcp/utcp_def_internal.h"
+#include "utcp/utcp_utils.h"
 }
 #include <algorithm>
 
@@ -232,7 +234,9 @@ void conn::incoming(uint8_t* data, int count)
 		utcp_incoming(_utcp_fd, data, count);
 		return;
 	}
+
 	_packet_order_cache.emplace(packet_id, data, count);
+	utcp_log(Verbose, "[%s]incoming _packet_order_cache:%d, count:%d, cache_size:%d", _utcp_fd->debug_name, packet_id, count, _packet_order_cache.size());
 
 	flush_packet_order_cache(false);
 }
@@ -405,5 +409,6 @@ void listener::on_accept(bool reconnect)
 	}
 	auto c = new conn;
 	accept(c, reconnect);
+	delete c;
 }
 } // namespace utcp

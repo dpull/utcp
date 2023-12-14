@@ -1,0 +1,30 @@
+{
+	"FileVersion" : 3,
+	
+	"FriendlyName" : "OnlineSubsystemUTcp",
+	"Version" : 1,
+	"VersionName" : "1.0",
+	"Description" : "UTcp NetDriver",
+	"Category" : "Online Platform",
+	"CreatedBy" : "",
+	"CreatedByURL" : "",
+	"EnabledByDefault" : true,
+
+    "Modules": [
+        {
+            "Name": "OnlineSubsystemUTcp",
+            "Type": "Runtime",
+            "LoadingPhase": "PostConfigInit"
+        }
+    ],
+	"Plugins": [
+		{
+			"Name": "OnlineSubsystem",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemUtils",
+			"Enabled": true
+		}
+	]
+}

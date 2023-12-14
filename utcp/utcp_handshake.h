@@ -13,12 +13,12 @@ void handshake_begin(struct utcp_connection* fd);
 int handshake_incoming(struct utcp_connection* fd, struct bitbuf* bitbuf);
 void handshake_update(struct utcp_connection* fd);
 
-static inline bool is_client(struct utcp_connection* fd)
-{
-	return fd->challenge_data != NULL;
-}
+bool is_client(struct utcp_connection* fd);
+bool is_connected(struct utcp_connection* fd);
 
-static inline bool is_connected(struct utcp_connection* fd)
-{
-	return !is_client(fd) || (is_client(fd) && fd->challenge_data->state == Initialized);
-}
+bool write_packet_header(struct bitbuf* bitbuf, uint8_t handshake_version, uint8_t session_id, uint8_t client_id, uint8_t is_handshake);
+bool read_packet_header(struct bitbuf* bitbuf, uint8_t handshake_version, uint8_t* session_id, uint8_t* client_id, uint8_t* is_handshake);
+
+uint8_t LastRemoteHandshakeVersion();
+uint8_t CurrentHandshakeVersion();
+uint8_t MinSupportedHandshakeVersion();

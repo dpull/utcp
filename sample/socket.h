@@ -1,9 +1,9 @@
 ﻿#pragma once
 
 #ifdef WIN32
+#include <Windows.h>
 #include <Winsock2.h>
 #include <Ws2tcpip.h>
-#include <Windows.h>
 
 using socket_t = SOCKET;
 inline int get_socket_error()
@@ -16,11 +16,11 @@ using ssize_t = int;
 #if defined(__linux) || defined(__APPLE__)
 #include <arpa/inet.h>
 #include <errno.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <netdb.h>
 
 using socket_t = int;
 constexpr socket_t INVALID_SOCKET = -1;

@@ -8,7 +8,7 @@ TEST(packet_notify, sequence_number)
 
 	uint16_t num2 = seq_num_init(SeqNumberMax);
 	ASSERT_EQ(num2, SeqNumberMax);
-	
+
 	uint16_t num3 = seq_num_init(SeqNumberMax + 5);
 	ASSERT_EQ(num3, 4);
 
@@ -24,5 +24,4 @@ TEST(packet_notify, sequence_number)
 	ASSERT_EQ(seq_num_diff(num1, num3), -10);
 	ASSERT_EQ(seq_num_diff(num2, num3), -5);
 }
-
 // FNetPacketNotifyTest::RunTest

@@ -34,76 +34,77 @@ THE SOFTWARE.
 
 #endif
 
-struct dl_list_node {
+struct dl_list_node
+{
 	struct dl_list_node* next;
 	struct dl_list_node* prev;
 };
 
 static inline int dl_list_init(struct dl_list_node* head_list)
 {
-    assert(!head_list->next);
-    assert(!head_list->prev);
-    head_list->next = head_list->prev = head_list;
-    return true;
+	assert(!head_list->next);
+	assert(!head_list->prev);
+	head_list->next = head_list->prev = head_list;
+	return true;
 }
 
 static inline int dl_list_empty(struct dl_list_node* head_list)
 {
-    return head_list->next == head_list;
+	return head_list->next == head_list;
 }
 
 static inline int dl_list_push_after(struct dl_list_node* head_list, struct dl_list_node* node)
 {
-    assert(!node->next);
-    assert(!node->prev);
+	assert(!node->next);
+	assert(!node->prev);
 
-    struct dl_list_node* list_head = head_list;
+	struct dl_list_node* list_head = head_list;
 	struct dl_list_node* front = list_head->next;
 	node->next = front;
 	node->prev = list_head;
 	front->prev = node;
 	list_head->next = node;
-    return true;
+	return true;
 }
 
 static inline int dl_list_push_before(struct dl_list_node* head_list, struct dl_list_node* node)
 {
-    assert(!node->next);
-    assert(!node->prev);
+	assert(!node->next);
+	assert(!node->prev);
 
-    struct dl_list_node* list_head = head_list;
+	struct dl_list_node* list_head = head_list;
 	struct dl_list_node* back = list_head->prev;
 	node->next = list_head;
 	node->prev = back;
 	back->next = node;
 	list_head->prev = node;
-    return true;
+	return true;
 }
 
 static inline int dl_list_erase(struct dl_list_node* node)
 {
 	struct dl_list_node* next = node->next;
 	struct dl_list_node* prev = node->prev;
-    prev->next = next;
-    next->prev = prev;
+	prev->next = next;
+	next->prev = prev;
 
-    node->next = NULL;
+	node->next = NULL;
 	node->prev = NULL;
-    return true;
+	return true;
 }
 
 static inline struct dl_list_node* dl_list_pop_next(struct dl_list_node* head_list)
 {
 	struct dl_list_node* node = head_list->next;
-    dl_list_erase(node);
-    return node;
+	dl_list_erase(node);
+	return node;
 }
 
 static inline struct dl_list_node* dl_list_pop_prev(struct dl_list_node* head_list)
 {
 	struct dl_list_node* node = head_list->prev;
-    dl_list_erase(node);
-    return node;
+	dl_list_erase(node);
+	return node;
 }
 
 static inline int dl_list_swap(struct dl_list_node* head_list1, struct dl_list_node* head_list2)
@@ -113,25 +114,31 @@ static inline int dl_list_swap(struct dl_list_node* head_list1, struct dl_list_n
 	struct dl_list_node* next2 = head_list2->next;
 	struct dl_list_node* prev2 = head_list2->prev;
 
-    if (next2 != head_list2) { // is not empty
-        head_list1->next = next2;
-        head_list1->prev = prev2;
+	if (next2 != head_list2)
+	{ // is not empty
+		head_list1->next = next2;
+		head_list1->prev = prev2;
 
-        next2->prev = head_list1;
-        prev2->next = head_list1;
-    } else { // if empty
-        dl_list_init(head_list1);
-    }
+		next2->prev = head_list1;
+		prev2->next = head_list1;
+	}
+	else
+	{ // if empty
+		dl_list_init(head_list1);
+	}
 
-    if (next1 != head_list1) { // is not empty
-        head_list2->next = next1;
-        head_list2->prev = prev1;
+	if (next1 != head_list1)
+	{ // is not empty
+		head_list2->next = next1;
+		head_list2->prev = prev1;
 
-        next1->prev = head_list2;
-        prev1->next = head_list2;
-    } else { // if empty
-        dl_list_init(head_list2);
-    }
+		next1->prev = head_list2;
+		prev1->next = head_list2;
+	}
+	else
+	{ // if empty
+		dl_list_init(head_list2);
+	}
 
-    return true;
+	return true;
 }

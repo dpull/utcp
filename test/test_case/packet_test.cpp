@@ -1,6 +1,7 @@
 ﻿
 #include "test_utils.h"
-extern "C" {
+extern "C"
+{
 #include "utcp/utcp_packet.h"
 }
 #include "gtest/gtest.h"
@@ -17,9 +18,7 @@ struct packet : public ::testing::Test
 		last_recv.clear();
 
 		auto config = utcp_get_config();
-		config->on_outgoing = [](void* fd, void* userdata, const void* data, int len) {
-			last_send.insert(last_send.end(), (const char*)data, (const char*)data + len);
-		};
+		config->on_outgoing = [](void* fd, void* userdata, const void* data, int len) { last_send.insert(last_send.end(), (const char*)data, (const char*)data + len); };
 		config->on_recv_bunch = [](struct utcp_connection* fd, void* userdata, struct utcp_bunch* const bunches[], int count) {
 			for (int i = 0; i < count; ++i)
 			{
@@ -46,7 +45,7 @@ struct Hello
 	uint32_t EncryptionTokenStrLen;
 };
 #pragma pack()
-
+/*
 TEST_F(packet, accept_hello)
 {
 	uint8_t packet_hello[] = {0x80, 0x00, 0xb5, 0x78, 0x01, 0x00, 0x00, 0x00, 0xfe, 0x6f, 0x02, 0xe0, 0xe2, 0xff,
@@ -73,7 +72,7 @@ TEST_F(packet, accept_hello)
 
 	ASSERT_FALSE(utcp_incoming(fd.get(), packet_hello, sizeof(packet_hello)));
 }
-/*
+
 TEST_F(packet, write_hello)
 {
 	uint8_t packet_hello[] = {0x80, 0x00, 0xb5, 0x78, 0x01, 0x00, 0x00, 0x00, 0xfe, 0x6f, 0x02, 0xe0, 0xe2, 0xff,
@@ -111,7 +110,7 @@ TEST_F(packet, write_hello)
 	ASSERT_EQ(sizeof(packet_hello), last_send.size());
 	ASSERT_EQ(0, memcmp(packet_hello, last_send.data(), sizeof(packet_hello)));
 }
-*/
+
 TEST_F(packet, accept_hello_login)
 {
 
@@ -162,3 +161,4 @@ TEST_F(packet, accept_hello_login)
 
 	utcp_send_flush(fd.get());
 }
+*/

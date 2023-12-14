@@ -13,8 +13,8 @@ void config()
 	static sample_config config;
 	g_config = &config;
 
-	g_config->log_level_limit = log_level::Log;
-	g_config->outgoing_loss = 50;
+	g_config->log_level_limit = log_level::Verbose;
+	g_config->outgoing_loss = 0;
 }
 
 static void vlog(int level, const char* fmt, va_list marker)
@@ -125,8 +125,8 @@ int main(int argc, const char* argv[])
 	utcp::event_handler::config(vlog);
 	utcp::event_handler::enbale_dump_data(g_config->log_level_limit >= log_level::Verbose);
 
-	// ds();
-	echo();
+	ds();
+	// echo();
 
 	log(log_level::Log, "server stop");
 	return 0;

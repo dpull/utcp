@@ -1,6 +1,7 @@
 ﻿#include "ds_connection.h"
 #include "sample_config.h"
-extern "C" {
+extern "C"
+{
 #include "utcp/bit_buffer.h"
 }
 #include <cassert>
@@ -72,8 +73,21 @@ void ds_connection::bind(socket_t fd, struct sockaddr_storage* addr, socklen_t a
 	set_debug_name("server");
 }
 
+void ds_connection::update()
+{
+	if (!disconnect)
+		utcp::conn::update();
+}
+
+void ds_connection::send_flush()
+{
+	if (!disconnect)
+		utcp::conn::send_flush();
+}
+
 void ds_connection::on_disconnect(int close_reason)
 {
+	disconnect = true;
 }
 
 void ds_connection::on_outgoing(const void* data, int len)
@@ -124,7 +138,7 @@ void ds_connection::on_delivery_status(int32_t packet_id, bool ack)
 void ds_connection::send_data()
 {
 	auto len = uint16_t(codec.pos - send_buffer);
-	utcp::large_bunch bunch(send_buffer, len);
+	utcp::large_bunch bunch(send_buffer, len * 8);
 	bunch.NameIndex = 255;
 	bunch.ChIndex = 0;
 	bunch.bReliable = 1;
@@ -132,6 +146,7 @@ void ds_connection::send_data()
 
 	auto ret = send_bunch(&bunch);
 	log(log_level::Verbose, "send bunch %d\n", ret.first);
+	send_flush();
 }
 
 // DEFINE_CONTROL_CHANNEL_MESSAGE(Hello, 0, uint8, uint32, FString); // initial client connection message

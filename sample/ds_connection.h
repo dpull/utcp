@@ -26,6 +26,8 @@ class ds_connection : public utcp::conn
 {
   public:
 	void bind(socket_t fd, struct sockaddr_storage* addr, socklen_t addr_len);
+	virtual void update() override;
+	virtual void send_flush() override;
 
   protected:
 	virtual void on_disconnect(int close_reason) override;
@@ -46,4 +48,5 @@ class ds_connection : public utcp::conn
 	struct sockaddr_storage dest_addr;
 	socklen_t dest_addr_len = 0;
 	uint8_t send_buffer[UDP_MTU_SIZE];
+	bool disconnect = false;
 };

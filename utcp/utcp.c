@@ -58,7 +58,7 @@ void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secre
 		uint8_t* CurArray = fd->HandshakeSecret[1];
 		for (int i = 0; i < SECRET_BYTE_SIZE; i++)
 		{
-			CurArray[i] = rand() % 255;
+			CurArray[i] = utcp_rand() % 255;
 		}
 
 		fd->ActiveSecret = 0;
@@ -77,7 +77,7 @@ void utcp_listener_update_secret(struct utcp_listener* fd, uint8_t special_secre
 	{
 		for (int i = 0; i < SECRET_BYTE_SIZE; i++)
 		{
-			CurArray[i] = rand() % 255;
+			CurArray[i] = utcp_rand() % 255;
 		}
 	}
 }
@@ -90,6 +90,8 @@ int utcp_listener_incoming(struct utcp_listener* fd, const char* address, const 
 
 void utcp_listener_accept(struct utcp_listener* listener, struct utcp_connection* conn, bool reconnect)
 {
+	conn->LastReceiveRealtime = utcp_gettime_ms();
+	conn->LastSendTime = utcp_gettime_ms();
 	if (!reconnect)
 	{
 		assert(conn->challenge_data == NULL);
@@ -130,11 +132,6 @@ void utcp_uninit(struct utcp_connection* fd)
 
 void utcp_connect(struct utcp_connection* fd)
 {
-	assert(!fd->challenge_data);
-	fd->challenge_data = (struct utcp_challenge_data*)utcp_realloc(NULL, sizeof(*fd->challenge_data));
-	memset(fd->challenge_data, 0, sizeof(sizeof(*fd->challenge_data)));
-	fd->challenge_data->bBeganHandshaking = true;
-
 	handshake_begin(fd);
 }
 
@@ -203,14 +200,11 @@ int32_t utcp_peep_packet_id(struct utcp_connection* fd, uint8_t* buffer, int len
 	if (!bitbuf_read_init(&bitbuf, buffer, len))
 		return -1;
 
-	read_magic_header(&bitbuf);
-	uint8_t bHandshakePacket;
-	if (!bitbuf_read_bit(&bitbuf, &bHandshakePacket))
-		return -1;
-
+	uint8_t SessionID, ClientID, bHandshakePacket;
+	if (!read_packet_header(&bitbuf, LastRemoteHandshakeVersion(), &SessionID, &ClientID, &bHandshakePacket))
+		return -2;
 	if (bHandshakePacket)
 		return 0;
-
 	return PeekPacketId(fd, &bitbuf);
 }
 
@@ -257,7 +251,7 @@ int utcp_send_flush(struct utcp_connection* fd)
 	WritePacketHeader(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
-	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;
