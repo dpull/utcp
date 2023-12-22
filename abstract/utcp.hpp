@@ -61,7 +61,7 @@ struct large_bunch : utcp_bunch
 {
 	explicit large_bunch(const uint8_t* data, size_t data_bits_len);
 	explicit large_bunch(utcp_bunch* const bunches[], int count);
-    explicit large_bunch();
+    large_bunch();
 
 	uint32_t ExtDataBitsLen : 28;
 	uint32_t bExtPartialSetFlag : 1;

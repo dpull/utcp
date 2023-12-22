@@ -56,7 +56,7 @@ class UUTcpControlChannel : public UControlChannel
 {
 	GENERATED_UCLASS_BODY()
 
-	UUTcpControlChannel(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get())
+	UUTcpControlChannel(const FObjectInitializer& ObjectInitializer)
 		: UControlChannel(ObjectInitializer)
 	{
 	}
@@ -78,7 +78,7 @@ class UUTcpActorChannel : public UActorChannel
 {
 	GENERATED_UCLASS_BODY()
 
-	UUTcpActorChannel(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get())
+	UUTcpActorChannel(const FObjectInitializer& ObjectInitializer)
 		: UActorChannel(ObjectInitializer)
 	{
 	}

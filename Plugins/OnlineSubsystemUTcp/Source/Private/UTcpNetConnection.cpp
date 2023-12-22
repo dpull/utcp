@@ -25,7 +25,7 @@ void UUTcpConnection::ReceivedRawPacket(void* Data, int32 Count)
 {
 	if (Driver->IsServer())
 	{
-		incoming((uint8_t*)Data, Count);
+		incoming(reinterpret_cast<uint8_t*>(data), Count);
 		return;
 	}
 	DumpBin(*(GetName() + TEXT("\tRecv")), Data, Count);
@@ -172,7 +172,7 @@ void UUTcpConnection::InternalAck(int32 AckPacketId, FChannelsToClose& OutChanne
 		}
 	};
 
-	// TODO 可以优化数量
+	// TODO: 可以优化数量
 	for (auto It = ActorChannelConstIterator(); It; ++It)
 	{
 		AckChannelFunc(AckPacketId, It->Value->ChIndex);
@@ -198,7 +198,7 @@ void UUTcpConnection::InternalNak(int32 NakPacketId)
 		}
 	};
 
-	// TODO 可以优化数量
+	// TODO: 可以优化数量
 	for (auto It = ActorChannelConstIterator(); It; ++It)
 	{
 		NakChannelFunc(NakPacketId, It->Value->ChIndex);

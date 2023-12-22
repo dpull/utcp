@@ -198,7 +198,7 @@ int large_bunch::num()
 	int cnt = 1;
 	if (ExtDataBitsLen > 0)
 	{
-		auto bytes_len = (int)bits2bytes(ExtDataBitsLen);
+		auto bytes_len = static_cast<int>(bits2bytes(ExtDataBitsLen));
 		cnt = bytes_len / MAX_SINGLE_BUNCH_SIZE_BYTES + 1;
 	}
 	return cnt;
