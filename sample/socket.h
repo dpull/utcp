@@ -1,9 +1,9 @@
 ﻿#pragma once
 
 #ifdef WIN32
-#include <Windows.h>
 #include <Winsock2.h>
 #include <Ws2tcpip.h>
+#include <Windows.h>
 
 using socket_t = SOCKET;
 inline int get_socket_error()

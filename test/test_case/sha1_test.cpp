@@ -38,7 +38,7 @@ TEST(sha1, test)
 			CookieData[j] = i + j;
 		}
 
-		sha1_hmac_buffer(HandshakeSecret, std::size(HandshakeSecret), CookieData, 100 + i, Cookie);
+		sha1_hmac_buffer(HandshakeSecret, static_cast<uint32_t>(std::size(HandshakeSecret)), CookieData, 100 + i, Cookie);
 		ASSERT_EQ(memcmp(Cookie, result[i], std::size(Cookie)), 0);
 	}
 }

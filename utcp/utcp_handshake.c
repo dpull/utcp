@@ -155,7 +155,7 @@ static void GenerateCookie(struct utcp_listener* fd, const char* ClientAddress, 
 }
 
 // StatelessConnectHandlerComponent::CapHandshakePacket
-void CapHandshakePacket(struct utcp_challenge_data* challenge_data, struct bitbuf* bitbuf, uint8_t HandshakeVersion)
+static void CapHandshakePacket(struct utcp_challenge_data* challenge_data, struct bitbuf* bitbuf, uint8_t HandshakeVersion)
 {
 	size_t NumBits = bitbuf->num - GetAdjustedSizeBits(0, HandshakeVersion);
 	if (HandshakeVersion == EHandshakeVersion_Original)
@@ -173,7 +173,7 @@ void CapHandshakePacket(struct utcp_challenge_data* challenge_data, struct bitbu
 
 	if (HandshakeVersion >= EHandshakeVersion_Randomized)
 	{
-		int32_t RandomDataLengthBytes = BaseRandomDataLengthBytes - rand() % RandomDataLengthVarianceBytes;
+		int32_t RandomDataLengthBytes = BaseRandomDataLengthBytes - utcp_rand() % RandomDataLengthVarianceBytes;
 		if (HandshakeVersion < EHandshakeVersion_SessionClientId)
 		{
 			if (NumBits + (RandomDataLengthBytes * 8) == OriginalRestartResponseSizeBits)
@@ -198,6 +198,25 @@ void CapHandshakePacket(struct utcp_challenge_data* challenge_data, struct bitbu
 	}
 }
 
+static void WriteHandshakeVersion(struct bitbuf* bitbuf, uint8_t HandshakePacketType, uint8_t HandshakeVersion, uint8_t ClientSentHandshakePacketCount,
+								  uint32_t LocalNetworkVersion)
+{
+	if (HandshakeVersion >= EHandshakeVersion_Randomized)
+	{
+		uint8_t MinVersion = EHandshakeVersion_Randomized;
+		uint8_t CurVersion = HandshakeVersion;
+		bitbuf_write_bytes(bitbuf, &MinVersion, sizeof(MinVersion));
+		bitbuf_write_bytes(bitbuf, &CurVersion, sizeof(CurVersion));
+		bitbuf_write_bytes(bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
+		bitbuf_write_bytes(bitbuf, &ClientSentHandshakePacketCount, sizeof(ClientSentHandshakePacketCount));
+	}
+
+	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
+	{
+		bitbuf_write_bytes(bitbuf, &LocalNetworkVersion, sizeof(LocalNetworkVersion));
+	}
+}
+
 // StatelessConnectHandlerComponent::SendConnectChallenge
 static void SendConnectChallenge(struct utcp_listener* fd, const char* address, uint8_t HandshakeVersion, uint8_t ClientSentHandshakePacketCount, uint32_t InClientID,
 								 uint32_t LocalNetworkVersion)
@@ -218,21 +237,7 @@ static void SendConnectChallenge(struct utcp_listener* fd, const char* address, 
 	write_packet_header(&bitbuf, HandshakeVersion, CachedGlobalNetTravelCount(), InClientID, bHandshakePacket);
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
 
-	if (HandshakeVersion >= EHandshakeVersion_Randomized)
-	{
-		uint8_t MinVersion = EHandshakeVersion_Randomized;
-		uint8_t CurVersion = HandshakeVersion;
-		uint8_t HandshakePacketType = EHandshakePacketType_Challenge;
-		bitbuf_write_bytes(&bitbuf, &MinVersion, sizeof(MinVersion));
-		bitbuf_write_bytes(&bitbuf, &CurVersion, sizeof(CurVersion));
-		bitbuf_write_bytes(&bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
-		bitbuf_write_bytes(&bitbuf, &ClientSentHandshakePacketCount, sizeof(ClientSentHandshakePacketCount));
-	}
-
-	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
-	{
-		bitbuf_write_bytes(&bitbuf, &LocalNetworkVersion, sizeof(LocalNetworkVersion));
-	}
+	WriteHandshakeVersion(&bitbuf, EHandshakePacketType_Challenge, HandshakeVersion, ClientSentHandshakePacketCount, LocalNetworkVersion);
 
 	bitbuf_write_bit(&bitbuf, fd->ActiveSecret);
 	bitbuf_write_bytes(&bitbuf, &Timestamp, sizeof(Timestamp));
@@ -259,21 +264,7 @@ static void SendRestartHandshakeRequest(struct utcp_listener* fd, uint8_t Handsh
 	write_packet_header(&bitbuf, HandshakeVersion, CachedGlobalNetTravelCount(), InClientID, bHandshakePacket);
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
 
-	if (HandshakeVersion >= EHandshakeVersion_Randomized)
-	{
-		uint8_t MinVersion = EHandshakeVersion_Randomized;
-		uint8_t CurVersion = HandshakeVersion;
-		uint8_t HandshakePacketType = EHandshakePacketType_Challenge;
-		bitbuf_write_bytes(&bitbuf, &MinVersion, sizeof(MinVersion));
-		bitbuf_write_bytes(&bitbuf, &CurVersion, sizeof(CurVersion));
-		bitbuf_write_bytes(&bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
-		bitbuf_write_bytes(&bitbuf, &ClientSentHandshakePacketCount, sizeof(ClientSentHandshakePacketCount));
-	}
-
-	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
-	{
-		bitbuf_write_bytes(&bitbuf, &LocalNetworkVersion, sizeof(LocalNetworkVersion));
-	}
+	WriteHandshakeVersion(&bitbuf, EHandshakePacketType_Challenge, HandshakeVersion, ClientSentHandshakePacketCount, LocalNetworkVersion);
 
 	CapHandshakePacket(NULL, &bitbuf, HandshakeVersion);
 
@@ -297,21 +288,7 @@ static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_conn
 	write_packet_header(&bitbuf, HandshakeVersion, CachedGlobalNetTravelCount(), InClientID, bHandshakePacket);
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
 
-	if (HandshakeVersion >= EHandshakeVersion_Randomized)
-	{
-		uint8_t MinVersion = EHandshakeVersion_Randomized;
-		uint8_t CurVersion = HandshakeVersion;
-		uint8_t HandshakePacketType = EHandshakePacketType_Ack;
-		bitbuf_write_bytes(&bitbuf, &MinVersion, sizeof(MinVersion));
-		bitbuf_write_bytes(&bitbuf, &CurVersion, sizeof(CurVersion));
-		bitbuf_write_bytes(&bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
-		bitbuf_write_bytes(&bitbuf, &ClientSentHandshakePacketCount, sizeof(ClientSentHandshakePacketCount));
-	}
-
-	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
-	{
-		bitbuf_write_bytes(&bitbuf, &LocalNetworkVersion, sizeof(LocalNetworkVersion));
-	}
+	WriteHandshakeVersion(&bitbuf, EHandshakePacketType_Ack, HandshakeVersion, ClientSentHandshakePacketCount, LocalNetworkVersion);
 
 	bitbuf_write_bit(&bitbuf, bHandshakePacket); // ActiveSecret
 
@@ -639,21 +616,9 @@ static void SendInitialPacket(struct utcp_connection* fd, uint8_t HandshakeVersi
 
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
 
-	if (HandshakeVersion >= EHandshakeVersion_Randomized)
-	{
-		uint8_t MinVersion = EHandshakeVersion_Randomized;
-		uint8_t CurVersion = HandshakeVersion;
-		uint8_t HandshakePacketType = EHandshakePacketType_InitialPacket;
-		bitbuf_write_bytes(&bitbuf, &MinVersion, sizeof(MinVersion));
-		bitbuf_write_bytes(&bitbuf, &CurVersion, sizeof(CurVersion));
-		bitbuf_write_bytes(&bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
-		bitbuf_write_bytes(&bitbuf, &fd->challenge_data->SentHandshakePacketCount, sizeof(fd->challenge_data->SentHandshakePacketCount));
-	}
-
-	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
 	{
 		struct utcp_config* utcp_config = utcp_get_config();
-		bitbuf_write_bytes(&bitbuf, &utcp_config->CachedNetworkChecksum, sizeof(utcp_config->CachedNetworkChecksum));
+		WriteHandshakeVersion(&bitbuf, EHandshakePacketType_InitialPacket, HandshakeVersion, fd->challenge_data->SentHandshakePacketCount, utcp_config->CachedNetworkChecksum);
 	}
 
 	bitbuf_write_bit(&bitbuf, SecretIdPad);
@@ -700,21 +665,10 @@ static void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId
 
 	bitbuf_write_bit(&bitbuf, bRestartHandshake);
 
-	if (HandshakeVersion >= EHandshakeVersion_Randomized)
-	{
-		uint8_t MinVersion = EHandshakeVersion_Randomized;
-		uint8_t CurVersion = HandshakeVersion;
-		uint8_t HandshakePacketType = bRestartHandshake ? EHandshakePacketType_RestartResponse : EHandshakePacketType_Response;
-		bitbuf_write_bytes(&bitbuf, &MinVersion, sizeof(MinVersion));
-		bitbuf_write_bytes(&bitbuf, &CurVersion, sizeof(CurVersion));
-		bitbuf_write_bytes(&bitbuf, &HandshakePacketType, sizeof(HandshakePacketType));
-		bitbuf_write_bytes(&bitbuf, &fd->challenge_data->SentHandshakePacketCount, sizeof(fd->challenge_data->SentHandshakePacketCount));
-	}
-
-	if (HandshakeVersion >= EHandshakeVersion_NetCLVersion)
 	{
 		struct utcp_config* utcp_config = utcp_get_config();
-		bitbuf_write_bytes(&bitbuf, &utcp_config->CachedNetworkChecksum, sizeof(utcp_config->CachedNetworkChecksum));
+		uint8_t HandshakePacketType = bRestartHandshake ? EHandshakePacketType_RestartResponse : EHandshakePacketType_Response;
+		WriteHandshakeVersion(&bitbuf, HandshakePacketType, HandshakeVersion, fd->challenge_data->SentHandshakePacketCount, utcp_config->CachedNetworkChecksum);
 	}
 
 	bitbuf_write_bit(&bitbuf, InSecretId);

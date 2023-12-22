@@ -1,7 +1,10 @@
-build/
 .idea/
 .vscode/
 cmake-build-debug/
+
+build/
+Plugins/OnlineSubsystemUTcp/Source/abstract
+Plugins/OnlineSubsystemUTcp/Source/utcp
 
 # Prerequisites
 *.d
