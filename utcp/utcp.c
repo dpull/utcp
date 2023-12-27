@@ -251,7 +251,7 @@ int utcp_send_flush(struct utcp_connection* fd)
 	WritePacketHeader(fd, &bitbuf);
 
 	bitbuf_write_end(&bitbuf);
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	memset(fd->SendBuffer, 0, sizeof(fd->SendBuffer));
 	fd->SendBufferBitsNum = 0;

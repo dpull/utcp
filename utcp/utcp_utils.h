@@ -129,7 +129,8 @@ static inline void utcp_connection_outgoing(struct utcp_connection* fd, const vo
 	}
 }
 
-#define utcp_raw_send(fd, buffer, len) _Generic((fd), struct utcp_listener *: utcp_listener_outgoing, struct utcp_connection *: utcp_connection_outgoing)(fd, buffer, len)
+// Not supported by gcc4.8.5.
+// #define utcp_raw_send(fd, buffer, len) _Generic((fd), struct utcp_listener *: utcp_listener_outgoing, struct utcp_connection *: utcp_connection_outgoing)(fd, buffer, len)
 
 static inline void utcp_on_accept(struct utcp_listener* fd, bool reconnect)
 {

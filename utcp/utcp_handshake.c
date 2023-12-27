@@ -245,7 +245,7 @@ static void SendConnectChallenge(struct utcp_listener* fd, const char* address, 
 
 	CapHandshakePacket(NULL, &bitbuf, HandshakeVersion);
 
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_listener_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendRestartHandshakeRequest
@@ -268,7 +268,7 @@ static void SendRestartHandshakeRequest(struct utcp_listener* fd, uint8_t Handsh
 
 	CapHandshakePacket(NULL, &bitbuf, HandshakeVersion);
 
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_listener_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 }
 
 // StatelessConnectHandlerComponent::SendChallengeAck
@@ -298,12 +298,12 @@ static void SendChallengeAck(struct utcp_listener* listener_fd, struct utcp_conn
 	if (listener_fd)
 	{
 		CapHandshakePacket(NULL, &bitbuf, HandshakeVersion);
-		utcp_raw_send(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+		utcp_listener_outgoing(listener_fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 	}
 	else
 	{
 		CapHandshakePacket(fd->challenge_data, &bitbuf, HandshakeVersion);
-		utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+		utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 	}
 }
 
@@ -628,7 +628,7 @@ static void SendInitialPacket(struct utcp_connection* fd, uint8_t HandshakeVersi
 
 	CapHandshakePacket(fd->challenge_data, &bitbuf, HandshakeVersion);
 
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 	fd->challenge_data->LastClientSendTimestamp = utcp_gettime_ms();
 }
 
@@ -682,7 +682,7 @@ static void SendChallengeResponse(struct utcp_connection* fd, uint8_t InSecretId
 	}
 
 	CapHandshakePacket(fd->challenge_data, &bitbuf, HandshakeVersion);
-	utcp_raw_send(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
+	utcp_connection_outgoing(fd, bitbuf.buffer, bitbuf_num_bytes(&bitbuf));
 
 	fd->challenge_data->LastClientSendTimestamp = utcp_gettime_ms();
 	fd->challenge_data->LastSecretId = InSecretId;
